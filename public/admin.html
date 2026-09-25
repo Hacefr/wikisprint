@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WikiSprint — Special:AdminPanel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#f8f9fa] text-[#202122] min-h-screen p-4 md:p-8 font-sans">
+  
+  <div class="max-w-4xl mx-auto bg-white border border-[#a2a9b1] p-6 shadow-sm">
+    <div class="border-b border-[#a2a9b1] pb-2 mb-6 flex justify-between items-center">
+      <div>
+        <h1 class="text-2xl font-serif">Special:AdministrativeControl</h1>
+        <p class="text-xs text-gray-500">WikiSprint System Privileges & Platform Management</p>
+      </div>
+      <a href="/" class="text-xs text-[#3366cc] hover:underline">&larr; Return to Library</a>
+    </div>
+
+    <!-- INITIAL ENROLLMENT / LOGIN VIEW -->
+    <div id="admin-auth-container" class="max-w-md mx-auto my-10 p-6 border border-[#a2a9b1] bg-[#f8f9fa]">
+      <h2 id="auth-title" class="font-serif font-bold text-lg mb-2">Administrator Access</h2>
+      <p id="auth-desc" class="text-xs text-gray-600 mb-4">Please verify master credentials.</p>
+      
+      <div id="auth-error" class="hidden p-2 text-xs bg-red-100 text-red-700 border border-red-300 mb-3"></div>
+
+      <form id="admin-auth-form" onsubmit="handleAdminAuth(event)" class="space-y-3">
+        <div id="owner-name-group" class="hidden">
+          <label class="block text-xs font-bold mb-1">Your Racer Username (To claim Admin Badge):</label>
+          <input id="owner-name" type="text" placeholder="e.g. Archivist" class="w-full border border-[#a2a9b1] p-2 text-xs">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold mb-1">Master Password:</label>
+          <input id="admin-pwd" type="password" required placeholder="••••••••••••" class="w-full border border-[#a2a9b1] p-2 text-xs">
+        </div>
+
+        <button type="submit" id="auth-btn" class="w-full bg-[#3366cc] text-white font-bold py-2 text-xs rounded-sm">
+          Authenticate
+        </button>
+      </form>
+    </div>
+
+    <!-- MAIN ADMIN PANEL (Hidden until authenticated) -->
+    <div id="admin-dashboard" class="hidden space-y-8">
+      
+      <!-- 1. Daily Challenge Override -->
+      <section class="border border-[#a2a9b1] p-4 bg-[#f8f9fa]">
+        <h3 class="font-serif font-bold text-sm mb-2 text-[#3366cc]">Override Daily Challenge</h3>
+        <p class="text-xs text-gray-600 mb-3">Force set the active start and target articles (resets current daily leaderboard).</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <input id="custom-start" type="text" placeholder="Start Article (e.g. Samurai)" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+          <input id="custom-target" type="text" placeholder="Target Article (e.g. Silicon Valley)" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+        </div>
+        <button onclick="setCustomDaily()" class="bg-[#3366cc] text-white text-xs font-bold px-4 py-2 rounded-sm">
+          Save Live Override
+        </button>
+      </section>
+
+      <!-- 2. Badge Studio & Granter -->
+      <section class="border border-[#a2a9b1] p-4 bg-[#f8f9fa]">
+        <h3 class="font-serif font-bold text-sm mb-2 text-[#3366cc]">Badge Studio & Awarder</h3>
+        <p class="text-xs text-gray-600 mb-3">Grant a clickable badge with tooltip explanation to a racer.</p>
+
+        <div class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="badge-target-user" type="text" placeholder="Recipient Username" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+            <input id="badge-id" type="text" placeholder="Badge ID (e.g. badge_top_3, badge_streak)" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="badge-name" type="text" placeholder="Badge Title (e.g. Top 3 Racer)" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+            <input id="badge-icon" type="text" placeholder="Icon Emoji (e.g. 🥇, 🛡️, ⚡)" class="border border-[#a2a9b1] p-2 text-xs bg-white">
+          </div>
+          <textarea id="badge-desc" placeholder="Badge Description (Displayed when players click the badge)" class="w-full border border-[#a2a9b1] p-2 text-xs bg-white h-16"></textarea>
+
+          <button onclick="awardBadge()" class="bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-sm">
+            Grant Badge to Racer
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. Racer Roster & Ban Controls -->
+      <section class="border border-[#a2a9b1] p-4">
+        <h3 class="font-serif font-bold text-sm mb-2">Registered Racers</h3>
+        <div class="overflow-x-auto border border-[#c8ccd1]">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-[#eaecf0] border-b border-[#c8ccd1] font-bold">
+              <tr>
+                <th class="p-2">User</th>
+                <th class="p-2">Lv / XP</th>
+                <th class="p-2">Wins</th>
+                <th class="p-2">Streak</th>
+                <th class="p-2">Badges</th>
+                <th class="p-2 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody" class="divide-y divide-[#c8ccd1]"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script>
+    let isSetupMode = false;
+    let adminToken = sessionStorage.getItem('wikisprint_admin_token');
+
+    async function checkStatus() {
+      const res = await fetch('/api/admin/status');
+      const data = await res.json();
+      
+      if (!data.isSetup) {
+        isSetupMode = true;
+        document.getElementById('auth-title').innerText = "One-Time Administrator Enrollment";
+        document.getElementById('auth-desc').innerText = "No master password set. Enroll your admin credentials and claim the Bureaucrat badge.";
+        document.getElementById('owner-name-group').classList.remove('hidden');
+        document.getElementById('auth-btn').innerText = "Initialize Admin & Claim Badge";
+      } else if (adminToken) {
+        loadDashboard();
+      }
+    }
+
+    async function handleAdminAuth(e) {
+      e.preventDefault();
+      const pwd = document.getElementById('admin-pwd').value;
+      const errBox = document.getElementById('auth-error');
+      errBox.classList.add('hidden');
+
+      if (isSetupMode) {
+        const owner = document.getElementById('owner-name').value.trim();
+        const res = await fetch('/api/admin/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPassword: pwd, ownerUsername: owner })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errBox.innerText = data.error;
+          errBox.classList.remove('hidden');
+          return;
+        }
+        adminToken = data.adminToken;
+        sessionStorage.setItem('wikisprint_admin_token', adminToken);
+        loadDashboard();
+      } else {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPassword: pwd })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errBox.innerText = data.error;
+          errBox.classList.remove('hidden');
+          return;
+        }
+        adminToken = data.adminToken;
+        sessionStorage.setItem('wikisprint_admin_token', adminToken);
+        loadDashboard();
+      }
+    }
+
+    async function loadDashboard() {
+      document.getElementById('admin-auth-container').classList.add('hidden');
+      document.getElementById('admin-dashboard').classList.remove('hidden');
+      loadUsers();
+    }
+
+    async function loadUsers() {
+      const res = await fetch('/api/admin/users', { headers: { 'x-admin-token': adminToken } });
+      const data = await res.json();
+      const tbody = document.getElementById('users-tbody');
+      
+      tbody.innerHTML = data.users.map(u => `
+        <tr class="${u.isBanned ? 'bg-red-50' : ''}">
+          <td class="p-2 font-bold">${u.username} ${u.isBanned ? '<span class="text-red-600 font-normal">[BANNED]</span>' : ''}</td>
+          <td class="p-2">Lv.${u.level}</td>
+          <td class="p-2">${u.wins}</td>
+          <td class="p-2">${u.streak} 🔥</td>
+          <td class="p-2">${u.badges.map(b => `<span title="${b.name}">${b.icon}</span>`).join(' ') || 'None'}</td>
+          <td class="p-2 text-center">
+            <button onclick="toggleBan('${u.username}', ${!u.isBanned})" class="text-xs px-2 py-0.5 border ${u.isBanned ? 'bg-emerald-50 border-emerald-400 text-emerald-700' : 'bg-red-50 border-red-400 text-red-700'}">
+              ${u.isBanned ? 'Unban' : 'Ban'}
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function toggleBan(username, ban) {
+      await fetch('/api/admin/ban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken },
+        body: JSON.stringify({ username, ban })
+      });
+      loadUsers();
+    }
+
+    async function awardBadge() {
+      const username = document.getElementById('badge-target-user').value.trim();
+      const badge = {
+        id: document.getElementById('badge-id').value.trim() || 'custom_' + Date.now(),
+        name: document.getElementById('badge-name').value.trim(),
+        icon: document.getElementById('badge-icon').value.trim() || '🏅',
+        description: document.getElementById('badge-desc').value.trim()
+      };
+
+      if (!username || !badge.name) return alert("User and title required.");
+
+      const res = await fetch('/api/admin/give-badge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken },
+        body: JSON.stringify({ username, badge })
+      });
+      if (res.ok) {
+        alert("Badge awarded!");
+        loadUsers();
+      }
+    }
+
+    async function setCustomDaily() {
+      const start = document.getElementById('custom-start').value;
+      const target = document.getElementById('custom-target').value;
+      const res = await fetch('/api/admin/set-daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken },
+        body: JSON.stringify({ start, target })
+      });
+      if (res.ok) alert("Daily challenge updated live!");
+    }
+
+    checkStatus();
+  </script>
+</body>
+</html>
