@@ -56,7 +56,7 @@
       </nav>
     </div>
 
-    <!-- User Header Profile Bar -->
+    <!-- User Header Bar -->
     <div class="flex items-center gap-4 text-xs">
       <div class="flex items-center gap-1.5 bg-wiki-bgLight dark:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-2 py-1 rounded-sm">
         <span class="text-amber-500 font-bold">🔥</span>
@@ -74,14 +74,13 @@
     </div>
   </header>
 
-  <!-- Main Content -->
+  <!-- Main View -->
   <main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8">
     <div class="border-b border-wiki-borderLight dark:border-wiki-borderDark pb-2 mb-6">
       <h1 class="text-2xl md:text-3xl font-serif font-normal">Game lobby</h1>
-      <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary mt-1">From WikiSprint, the encyclopedic speedrun competition</p>
+      <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary mt-1">Encyclopedic speedrunning platform</p>
     </div>
 
-    <!-- Two Columns -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
       
       <!-- LEFT: SINGLE-PLAYER -->
@@ -90,14 +89,14 @@
         <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
           <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
             <span>Featured: Daily Challenge</span>
-            <span id="daily-day-label" class="text-[11px] font-sans font-normal text-wiki-textSecondary dark:text-wiki-textDarkSecondary">UTC Day #...</span>
+            <span id="daily-day-label" class="text-[11px] font-sans font-normal text-wiki-textSecondary">UTC Day #...</span>
           </div>
 
           <div class="p-4 space-y-4">
             <div class="flex items-center justify-between bg-wiki-bgLight dark:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-3 py-2 text-xs">
               <div class="flex items-center gap-1.5">
                 <span class="font-semibold">Attempts:</span>
-                <span id="attempt-pips" class="font-mono text-xs"></span>
+                <span id="attempt-pips" class="font-mono text-xs">0 of 3 used</span>
               </div>
               <span class="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-0.5 border border-emerald-500/20">+250 EXP</span>
             </div>
@@ -105,11 +104,11 @@
             <table class="w-full text-xs border border-wiki-borderLight dark:border-wiki-borderDark">
               <tbody>
                 <tr class="border-b border-wiki-borderLight dark:border-wiki-borderDark">
-                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 w-20 text-wiki-textSecondary dark:text-wiki-textDarkSecondary border-r border-wiki-borderLight dark:border-wiki-borderDark">START</td>
+                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 w-20 text-wiki-textSecondary border-r border-wiki-borderLight">START</td>
                   <td id="daily-start" class="px-3 py-2 font-serif text-sm">Loading...</td>
                 </tr>
                 <tr>
-                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 text-wiki-textSecondary dark:text-wiki-textDarkSecondary border-r border-wiki-borderLight dark:border-wiki-borderDark">TARGET</td>
+                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 text-wiki-textSecondary border-r border-wiki-borderLight">TARGET</td>
                   <td id="daily-target" class="px-3 py-2 font-serif text-sm">Loading...</td>
                 </tr>
               </tbody>
@@ -152,7 +151,7 @@
           </div>
         </div>
 
-        <!-- Host Match -->
+        <!-- Host Match with Advanced Rules -->
         <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
           <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
             <span>Host Custom Room</span>
@@ -160,32 +159,45 @@
           </div>
 
           <div class="p-4 space-y-4">
-            <div class="space-y-3 pt-1 border-t border-wiki-borderLight dark:border-wiki-borderDark">
+            <div class="space-y-3.5 pt-1 border-t border-wiki-borderLight dark:border-wiki-borderDark">
+              
+              <!-- Win Condition Selection -->
               <div class="flex items-center justify-between text-xs">
                 <div>
-                  <span class="font-bold block">Attempts allowed</span>
-                  <span class="text-[11px] text-wiki-textSecondary">Allowed retries before disqualification</span>
+                  <span class="font-bold block">Win Condition</span>
+                  <span class="text-[11px] text-wiki-textSecondary">How match ranking is scored</span>
                 </div>
-                <select id="select-attempts" class="bg-white dark:bg-wiki-cardDark border border-wiki-border px-2 py-1 text-xs rounded-sm">
-                  <option value="1">1 attempt</option>
-                  <option value="3" selected>3 attempts</option>
-                  <option value="99">Unlimited</option>
+                <select id="select-win-condition" class="bg-white dark:bg-wiki-cardDark border border-wiki-border px-2 py-1 text-xs rounded-sm">
+                  <option value="BOTH" selected>Both (Fewest Clicks &rarr; Time Tiebreak)</option>
+                  <option value="TIME">Fastest Time (Pure Speedrun)</option>
+                  <option value="STEPS">Fewest Clicks (Shortest Path)</option>
                 </select>
               </div>
 
+              <!-- Ban New Tabs -->
+              <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                <input id="toggle-new-tabs" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
+                <div>
+                  <span class="font-bold">Ban opening links in new tabs</span>
+                  <p class="text-wiki-textSecondary text-[11px]">Blocks middle-click, Ctrl+Click, and right-click menu</p>
+                </div>
+              </label>
+
+              <!-- Ban Ctrl+F -->
               <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
                 <input id="toggle-ctrl-f" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
                 <div>
                   <span class="font-bold">Ban in-page search (Ctrl + F)</span>
-                  <p class="text-wiki-textSecondary text-[11px]">Suppresses find-in-page shortcut</p>
+                  <p class="text-wiki-textSecondary text-[11px]">Suppresses find-in-page shortcut keys</p>
                 </div>
               </label>
 
+              <!-- Ban Tab Switching -->
               <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
                 <input id="toggle-tab-switch" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
                 <div>
                   <span class="font-bold text-red-600 dark:text-red-400">Ban leaving tab or window</span>
-                  <p class="text-wiki-textSecondary text-[11px]">Forfeits attempt immediately on blur</p>
+                  <p class="text-wiki-textSecondary text-[11px]">Disqualifies racer immediately if window focus is lost</p>
                 </div>
               </label>
             </div>
@@ -199,22 +211,22 @@
     </div>
   </main>
 
-  <!-- ================= MODALS ================= -->
+  <!-- MODALS -->
 
-  <!-- 1. MANDATORY LOGIN MODAL -->
+  <!-- Mandatory Login -->
   <div id="login-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark max-w-sm w-full p-6 shadow-2xl">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full p-6 shadow-2xl">
       <div class="flex items-center gap-2 mb-3">
         <span class="font-serif text-2xl font-bold">W</span>
         <h3 class="font-serif font-bold text-lg">Log in to WikiSprint</h3>
       </div>
-      <p class="text-xs text-wiki-textSecondary mb-4">Choose a username to track your navigation streak, EXP, and leaderboard placements.</p>
+      <p class="text-xs text-wiki-textSecondary mb-4">Choose a handle to track your streaks, EXP, and leaderboard placements.</p>
       
       <form onsubmit="handleLoginSubmit(event)" class="space-y-3">
         <div>
           <label class="block text-xs font-bold mb-1">Wikipedia Handle:</label>
           <div class="flex items-center">
-            <span class="bg-[#eaecf0] dark:bg-wiki-cardDark border border-r-0 border-wiki-border px-2 py-1.5 text-xs text-wiki-textSecondary font-mono">User:</span>
+            <span class="bg-[#eaecf0] dark:bg-wiki-cardDark border border-r-0 border-wiki-border px-2 py-1.5 text-xs font-mono text-wiki-textSecondary">User:</span>
             <input id="login-input-name" type="text" required placeholder="Archivist" maxlength="16" class="w-full bg-white dark:bg-wiki-cardDark border border-wiki-border px-3 py-1.5 text-xs focus:outline-none focus:border-wiki-blue">
           </div>
         </div>
@@ -225,9 +237,9 @@
     </div>
   </div>
 
-  <!-- 2. MULTIPLAYER LOBBY STAGING MODAL -->
+  <!-- Multiplayer Lobby Staging -->
   <div id="lobby-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark max-w-md w-full shadow-2xl">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-md w-full shadow-2xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2.5 flex justify-between items-center">
         <span class="font-serif font-bold text-sm">Room: <span id="lobby-room-code" class="font-mono text-wiki-blue"></span></span>
         <span class="text-xs text-wiki-textSecondary">Share code with friends</span>
@@ -245,18 +257,18 @@
           </button>
         </div>
         <div id="client-wait-msg" class="text-xs text-center text-wiki-textSecondary animate-pulse">
-          Waiting for the room host to start the race...
+          Waiting for host to begin the race...
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 3. DAILY LEADERBOARD MODAL -->
+  <!-- Leaderboard Modal -->
   <div id="leaderboard-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-2xl w-full shadow-xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2 flex justify-between items-center">
         <h3 class="font-serif font-bold text-sm">Daily Leaderboard</h3>
-        <button onclick="toggleLeaderboardModal()" class="font-mono text-base font-bold leading-none">&times;</button>
+        <button onclick="toggleLeaderboardModal()" class="font-mono text-base font-bold">&times;</button>
       </div>
       <div class="p-4 space-y-3">
         <div class="overflow-x-auto border border-wiki-borderLight">
@@ -270,26 +282,24 @@
                 <th class="p-2 text-center w-20">Time</th>
               </tr>
             </thead>
-            <tbody id="leaderboard-tbody" class="divide-y divide-wiki-borderLight">
-              <tr><td colspan="5" class="p-3 text-center text-wiki-textSecondary">Loading records...</td></tr>
-            </tbody>
+            <tbody id="leaderboard-tbody" class="divide-y divide-wiki-borderLight"></tbody>
           </table>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 4. PROFILE MODAL -->
+  <!-- Profile Modal -->
   <div id="profile-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-md w-full shadow-xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2 flex justify-between items-center">
         <h3 id="profile-title" class="font-serif font-bold text-sm">User Profile</h3>
-        <button onclick="toggleProfileModal()" class="font-mono text-base font-bold leading-none">&times;</button>
+        <button onclick="toggleProfileModal()" class="font-mono text-base font-bold">&times;</button>
       </div>
       <div class="p-5 space-y-4">
         <div class="flex items-center justify-between border-b border-wiki-borderLight pb-3">
           <div>
-            <span class="text-[10px] uppercase font-bold text-wiki-textSecondary">Current Rank</span>
+            <span class="text-[10px] uppercase font-bold text-wiki-textSecondary">Rank</span>
             <h4 id="profile-rank" class="font-serif text-lg font-bold text-wiki-blue">Editor</h4>
           </div>
           <div class="text-right">
@@ -311,11 +321,11 @@
         <table class="w-full text-xs border border-wiki-borderLight">
           <tbody>
             <tr class="border-b border-wiki-borderLight">
-              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold w-1/2">Total Multiplayer Wins</td>
+              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold w-1/2">Multiplayer Wins</td>
               <td id="profile-wins" class="px-3 py-2 font-mono font-bold">0</td>
             </tr>
             <tr>
-              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold">Current Daily Streak</td>
+              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold">Daily Streak</td>
               <td id="profile-streak" class="px-3 py-2 font-mono font-bold text-amber-500">0 Days 🔥</td>
             </tr>
           </tbody>
@@ -329,11 +339,9 @@
     let currentDaily = null;
     let currentLobbyId = null;
 
-    // --- 1. USER PROFILE STORAGE ENGINE ---
     function getProfile() {
       const stored = localStorage.getItem('wikisprint_user');
-      if (stored) return JSON.parse(stored);
-      return null;
+      return stored ? JSON.parse(stored) : null;
     }
 
     function saveProfile(p) {
@@ -354,17 +362,14 @@
       e.preventDefault();
       const name = document.getElementById('login-input-name').value.trim();
       if (!name) return;
-      
-      const newProfile = {
+      saveProfile({
         username: name,
         level: 1,
         exp: 0,
         wins: 0,
         streak: 0,
-        lastDailyPlayed: null,
         dailyAttempts: 0
-      };
-      saveProfile(newProfile);
+      });
       document.getElementById('login-modal').classList.add('hidden');
     }
 
@@ -383,13 +388,9 @@
       const expNeeded = p.level * 500;
       document.getElementById('profile-exp-text').innerText = `${p.exp} / ${expNeeded} XP`;
       document.getElementById('profile-exp-bar').style.width = `${Math.min(100, (p.exp / expNeeded) * 100)}%`;
-
-      // Check daily attempt pips
-      const attempts = p.dailyAttempts || 0;
-      document.getElementById('attempt-pips').innerText = `${attempts} of 3 used`;
+      document.getElementById('attempt-pips').innerText = `${p.dailyAttempts || 0} of 3 used`;
     }
 
-    // --- 2. DAILY CHALLENGE INITIALIZER ---
     async function loadDaily() {
       try {
         const res = await fetch('/api/daily');
@@ -398,15 +399,13 @@
         document.getElementById('daily-day-label').innerText = `UTC Day #${currentDaily.day}`;
         document.getElementById('daily-start').innerText = currentDaily.start.replace(/_/g, ' ');
         document.getElementById('daily-target').innerText = currentDaily.target.replace(/_/g, ' ');
-      } catch (err) {
-        console.error("Failed to load daily challenge", err);
-      }
+      } catch (err) {}
     }
 
     function startDailyChallenge() {
       const p = getProfile();
       if (p && p.dailyAttempts >= 3) {
-        return alert("You have exhausted all 3 attempts for today's daily challenge!");
+        return alert("All 3 attempts used for today's daily challenge!");
       }
       p.dailyAttempts = (p.dailyAttempts || 0) + 1;
       saveProfile(p);
@@ -421,15 +420,15 @@
         const target = encodeURIComponent(data.query.random[1].title);
         window.location.href = `/game.html?mode=random&start=${start}&target=${target}`;
       } catch (e) {
-        alert("Failed to pick random articles. Please try again.");
+        alert("Failed to pick random articles.");
       }
     }
 
-    // --- 3. MULTIPLAYER LOBBY HANDLERS ---
     function createLobby() {
       const p = getProfile();
       const rules = {
-        maxAttempts: parseInt(document.getElementById('select-attempts').value, 10),
+        winCondition: document.getElementById('select-win-condition').value,
+        banNewTabs: document.getElementById('toggle-new-tabs').checked,
         banCtrlF: document.getElementById('toggle-ctrl-f').checked,
         banTabSwitch: document.getElementById('toggle-tab-switch').checked
       };
@@ -460,7 +459,6 @@
     });
 
     socket.on('room_updated', (room) => {
-      const p = getProfile();
       const isHost = room.hostId === socket.id;
       showLobbyModal(room, isHost);
     });
@@ -487,12 +485,11 @@
     }
 
     socket.on('race_started', ({ startPage, targetPage, rules }) => {
-      window.location.href = `/game.html?mode=multiplayer&room=${currentLobbyId}&start=${encodeURIComponent(startPage)}&target=${encodeURIComponent(targetPage)}&ctrlF=${rules.banCtrlF}&tabSwitch=${rules.banTabSwitch}`;
+      window.location.href = `/game.html?mode=multiplayer&room=${currentLobbyId}&start=${encodeURIComponent(startPage)}&target=${encodeURIComponent(targetPage)}&winCondition=${rules.winCondition}&newTabs=${rules.banNewTabs}&ctrlF=${rules.banCtrlF}&tabSwitch=${rules.banTabSwitch}`;
     });
 
     socket.on('error_message', (msg) => alert(msg));
 
-    // --- 4. LEADERBOARD ---
     async function openLeaderboard() {
       document.getElementById('leaderboard-modal').classList.remove('hidden');
       const tbody = document.getElementById('leaderboard-tbody');
@@ -502,7 +499,7 @@
         const res = await fetch('/api/daily-leaderboard');
         const data = await res.json();
         if (data.leaderboard.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center">No runs recorded today yet!</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-wiki-textSecondary">No runs today yet!</td></tr>`;
           return;
         }
 
@@ -516,7 +513,7 @@
           </tr>
         `).join('');
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-red-500">Failed to load leaderboard.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-red-500">Failed to load.</td></tr>`;
       }
     }
 
@@ -528,7 +525,6 @@
       document.getElementById('profile-modal').classList.toggle('hidden');
     }
 
-    // Init on boot
     ensureLogin();
     loadDaily();
   </script>
