@@ -7,12 +7,11 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    /* Prevent mobile tap highlights & force touch context security */
     * {
       -webkit-tap-highlight-color: transparent;
     }
     #wiki-body {
-      -webkit-touch-callout: none; /* Disables iOS long-press preview / open in tab */
+      -webkit-touch-callout: none;
       user-select: text;
     }
     #wiki-body a { 
@@ -20,18 +19,16 @@
       text-decoration: none; 
       cursor: pointer;
       display: inline-block;
-      padding: 1px 0; /* Slightly larger tap area for fingers */
+      padding: 1px 0;
     }
     #wiki-body a:active { text-decoration: underline; background-color: rgba(51, 102, 204, 0.1); }
     #wiki-body a.disabled-link { color: inherit !important; text-decoration: none !important; cursor: default !important; pointer-events: none; }
     
-    /* Responsive Wikipedia Content */
     #wiki-body p { margin-bottom: 0.85rem; line-height: 1.6; font-size: 15px; }
     #wiki-body h2 { font-family: Georgia, serif; font-size: 1.25rem; border-bottom: 1px solid #c8ccd1; margin-top: 1.3rem; margin-bottom: 0.4rem; font-weight: normal; }
     #wiki-body h3 { font-family: Georgia, serif; font-size: 1.05rem; margin-top: 1rem; margin-bottom: 0.3rem; }
     #wiki-body ul { list-style-type: disc; margin-left: 1.25rem; margin-bottom: 0.8rem; }
     
-    /* Mobile-scrollable tables and infoboxes */
     #wiki-body table, #wiki-body .infobox {
       max-width: 100% !important;
       display: block !important;
@@ -48,27 +45,42 @@
 </head>
 <body class="bg-[#f8f9fa] text-[#202122] min-h-screen flex flex-col font-sans select-none">
 
-  <!-- Mobile HUD (Compact 2-Row / Sticky) -->
+  <!-- HUD Bar -->
   <header class="sticky top-0 z-40 bg-white border-b border-[#a2a9b1] px-3 py-1.5 text-xs shadow-sm flex flex-col gap-1">
     
-    <!-- Row 1: Target Mission -->
+    <!-- Row 1: Target Mission & Reset Controls -->
     <div class="flex items-center justify-between gap-2">
-      <div class="flex items-center gap-1 min-w-0">
+      <div class="flex items-center gap-1.5 min-w-0">
         <span class="font-bold text-[#54595d] uppercase text-[10px] shrink-0">GOAL:</span>
         <span id="hud-target" class="font-serif text-xs sm:text-sm font-bold text-[#3366cc] truncate"></span>
       </div>
-      <span id="hud-rule-badge" class="shrink-0 text-[10px] font-bold bg-[#eaecf0] px-1.5 py-0.5 rounded-sm text-[#54595d]"></span>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <!-- SINGLEPLAYER RESET BUTTON -->
+        <button id="btn-reset" onclick="resetRun()" class="border border-[#a2a9b1] bg-white px-2 py-0.5 rounded-sm text-[11px] font-semibold hover:bg-gray-100 cursor-pointer">
+          ↻ Reset
+        </button>
+
+        <span id="hud-rule-badge" class="text-[10px] font-bold bg-[#eaecf0] px-1.5 py-0.5 rounded-sm text-[#54595d]"></span>
+      </div>
     </div>
 
-    <!-- Row 2: Live Counters & Opponents -->
+    <!-- Row 2: Live Counters & Status -->
     <div class="flex items-center justify-between font-mono text-[11px] pt-0.5 border-t border-gray-100">
       <div class="flex items-center gap-3">
         <div>CLICKS: <b id="hud-clicks" class="text-xs">0</b></div>
         <div>TIME: <b id="hud-timer" class="text-xs">00:00</b></div>
+        <div id="hud-attempt-counter">ATTEMPT: <b id="hud-attempt-num">1</b></div>
       </div>
-      <div id="hud-opponents" class="hidden flex items-center gap-1.5 overflow-hidden">
-        <span class="text-[#54595d] text-[10px]">Opponent:</span>
-        <div id="opponents-ticker" class="truncate max-w-[130px]"></div>
+
+      <div class="flex items-center gap-2">
+        <span id="unranked-tag" class="hidden text-[10px] text-amber-700 bg-amber-100 border border-amber-300 px-1 font-bold">
+          Practice (Unranked)
+        </span>
+        <div id="hud-opponents" class="hidden flex items-center gap-1.5 overflow-hidden">
+          <span class="text-[#54595d] text-[10px]">Opponent:</span>
+          <div id="opponents-ticker" class="truncate max-w-[130px]"></div>
+        </div>
       </div>
     </div>
   </header>
@@ -84,7 +96,7 @@
     <div class="bg-white border border-[#a2a9b1] max-w-xs sm:max-w-md w-full p-5 text-center shadow-2xl">
       <span class="text-3xl block mb-1">🏆</span>
       <h2 id="win-title" class="font-serif text-xl font-bold mb-1">Target Reached!</h2>
-      <p class="text-xs text-[#54595d] mb-3">Course completed successfully.</p>
+      <p id="win-subtitle" class="text-xs text-[#54595d] mb-3">Course completed successfully.</p>
 
       <div class="grid grid-cols-2 gap-2 text-xs border border-[#c8ccd1] p-2.5 mb-3 font-mono">
         <div>CLICKS: <b id="win-clicks">0</b></div>
@@ -110,7 +122,8 @@
     const socket = io();
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode') || 'daily';
-    let currentArticle = params.get('start') || 'The_Great_Barrier_Reef';
+    const startingArticle = params.get('start') || 'The_Great_Barrier_Reef';
+    let currentArticle = startingArticle;
     const targetArticle = params.get('target') || 'Quantum_computing';
     const roomId = params.get('room');
 
@@ -119,22 +132,61 @@
     const banCtrlF = params.get('ctrlF') !== 'false';
     const banTabSwitch = params.get('tabSwitch') !== 'false';
 
+    let currentAttempt = 1;
     let clicks = 0;
     let secondsElapsed = 0;
     let timer = null;
-    let route = [currentArticle];
+    let route = [startingArticle];
+
+    // Hide reset button in multiplayer matches
+    if (mode === 'multiplayer') {
+      document.getElementById('btn-reset').classList.add('hidden');
+      document.getElementById('hud-attempt-counter').classList.add('hidden');
+    }
 
     document.getElementById('hud-target').innerText = decodeURIComponent(targetArticle).replace(/_/g, ' ');
     document.getElementById('hud-rule-badge').innerText = 
       winCondition === 'TIME' ? 'Speedrun' : winCondition === 'STEPS' ? 'Fewest Clicks' : 'Clicks + Time';
 
+    function checkAttemptLimit() {
+      document.getElementById('hud-attempt-num').innerText = currentAttempt;
+      if (mode === 'daily' && currentAttempt > 3) {
+        document.getElementById('unranked-tag').classList.remove('hidden');
+      } else {
+        document.getElementById('unranked-tag').classList.add('hidden');
+      }
+    }
+
     function startTimer() {
+      if (timer) clearInterval(timer);
       timer = setInterval(() => {
         secondsElapsed++;
         const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
         const secs = String(secondsElapsed % 60).padStart(2, '0');
         document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
       }, 1000);
+    }
+
+    // --- RESET CURRENT RUN ---
+    function resetRun() {
+      const confirmPrompt = mode === 'daily'
+        ? `Resetting will consume attempt #${currentAttempt + 1}. Runs past 3 attempts do not rank on the leaderboard. Proceed?`
+        : "Reset your clicks and timer back to the beginning?";
+
+      if (confirm(confirmPrompt)) {
+        currentAttempt++;
+        clicks = 0;
+        secondsElapsed = 0;
+        route = [startingArticle];
+        currentArticle = startingArticle;
+
+        document.getElementById('hud-clicks').innerText = "0";
+        document.getElementById('hud-timer').innerText = "00:00";
+
+        checkAttemptLimit();
+        startTimer();
+        fetchArticle(startingArticle);
+      }
     }
 
     async function fetchArticle(title) {
@@ -185,7 +237,7 @@
       }
     }
 
-    // ANTI-CHEAT ENFORCEMENTS
+    // --- ANTI-CHEAT LISTENERS ---
     window.addEventListener('keydown', (e) => {
       if (banCtrlF && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
@@ -196,23 +248,19 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && banTabSwitch) {
         if (roomId) socket.emit('violation_tab_switch', { roomId });
-        alert("Tab switched or minimized! Match forfeited.");
+        alert("Tab switched or minimized! Run forfeited.");
         window.location.href = '/';
       }
     });
 
-    // MOBILE TOUCH ANTI-CHEAT (Neutralize long press & context menu)
     if (banNewTabs) {
       const container = document.getElementById('wiki-body');
-      
       container.addEventListener('contextmenu', (e) => {
         if (e.target.closest('a')) e.preventDefault();
       });
-
       container.addEventListener('auxclick', (e) => {
         if (e.target.closest('a') && e.button === 1) e.preventDefault();
       });
-
       container.addEventListener('click', (e) => {
         if (e.target.closest('a') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
           e.preventDefault();
@@ -220,6 +268,7 @@
       }, true);
     }
 
+    // --- VICTORY ENGINE ---
     async function triggerVictory() {
       clearInterval(timer);
       document.getElementById('win-clicks').innerText = clicks;
@@ -230,10 +279,20 @@
       if (!token) return;
 
       if (mode === 'daily') {
+        const isRanked = currentAttempt <= 3;
+        if (!isRanked) {
+          document.getElementById('win-subtitle').innerText = "Target reached in Practice Mode (Not ranked on leaderboard).";
+        }
+
         await fetch('/api/daily-submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': token },
-          body: JSON.stringify({ clicks, timeSeconds: secondsElapsed, route })
+          body: JSON.stringify({ 
+            clicks, 
+            timeSeconds: secondsElapsed, 
+            attempt: currentAttempt, 
+            route 
+          })
         });
       } else {
         await fetch('/api/match-finish', {
@@ -263,6 +322,7 @@
       });
     }
 
+    checkAttemptLimit();
     startTimer();
     fetchArticle(currentArticle);
   </script>
