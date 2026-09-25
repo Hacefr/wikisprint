@@ -9,22 +9,29 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-app.use(express.json());
+// Allow 10MB JSON payloads for base64 badge image uploads
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. LOCAL PERSISTENT DATABASE ---
+// --- 1. LOCAL DATABASE & STORAGE ---
 const DB_FILE = path.join(__dirname, 'database.json');
 
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
-    const initData = { users: {}, sessions: {}, dailyLeaderboard: [] };
+    const initData = {
+      adminConfig: { isSetup: false, salt: null, hash: null },
+      customDaily: null,
+      users: {},
+      sessions: {},
+      dailyLeaderboard: []
+    };
     fs.writeFileSync(DB_FILE, JSON.stringify(initData, null, 2));
     return initData;
   }
   try {
     return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (e) {
-    return { users: {}, sessions: {}, dailyLeaderboard: [] };
+    return { adminConfig: { isSetup: false }, users: {}, sessions: {}, dailyLeaderboard: [] };
   }
 }
 
@@ -34,7 +41,7 @@ function saveDB(data) {
 
 let db = loadDB();
 
-// --- 2. CRYPTO UTILITIES ---
+// --- 2. CRYPTO HELPERS ---
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -46,35 +53,139 @@ function verifyPassword(password, salt, hash) {
   return checkHash === hash;
 }
 
-// Authentication Middleware
 function authMiddleware(req, res, next) {
   const token = req.headers['authorization'];
   if (!token || !db.sessions[token]) {
     return res.status(401).json({ error: "Unauthorized. Please log in." });
   }
-  req.username = db.sessions[token];
-  req.user = db.users[req.username];
+  const username = db.sessions[token];
+  const user = db.users[username];
+  if (!user) return res.status(401).json({ error: "User not found." });
+  if (user.isBanned) return res.status(403).json({ error: "Your account has been banned by an administrator." });
+  
+  req.username = username;
+  req.user = user;
   next();
 }
 
-// --- 3. AUTHENTICATION ENDPOINTS ---
+function adminAuthMiddleware(req, res, next) {
+  const adminToken = req.headers['x-admin-token'];
+  if (!adminToken || !db.sessions[adminToken] || db.sessions[adminToken] !== '__ADMIN__') {
+    return res.status(403).json({ error: "Admin clearance required." });
+  }
+  next();
+}
 
-// Register New Account
+// --- 3. ADMIN DASHBOARD & SETUP ---
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/api/admin/status', (req, res) => {
+  res.json({ isSetup: db.adminConfig.isSetup });
+});
+
+// One-time Admin Enrollment
+app.post('/api/admin/setup', (req, res) => {
+  if (db.adminConfig.isSetup) {
+    return res.status(400).json({ error: "Admin account is already setup. Please log in." });
+  }
+
+  const { adminPassword, ownerUsername } = req.body;
+  if (!adminPassword || adminPassword.length < 8) {
+    return res.status(400).json({ error: "Admin password must be at least 8 characters long." });
+  }
+
+  const { salt, hash } = hashPassword(adminPassword);
+  db.adminConfig = { isSetup: true, salt, hash };
+
+  // Grant the owner account the official Sysop Admin badge
+  if (ownerUsername && db.users[ownerUsername]) {
+    if (!db.users[ownerUsername].badges) db.users[ownerUsername].badges = [];
+    db.users[ownerUsername].badges.push({
+      id: 'badge_admin',
+      name: 'Bureaucrat / Sysop',
+      description: 'System Administrator and platform supervisor.',
+      icon: '🛡️'
+    });
+  }
+
+  const adminToken = crypto.randomBytes(32).toString('hex');
+  db.sessions[adminToken] = '__ADMIN__';
+  saveDB(db);
+
+  res.json({ success: true, adminToken });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { adminPassword } = req.body;
+  if (!db.adminConfig.isSetup) {
+    return res.status(400).json({ error: "Admin account has not been initialized." });
+  }
+
+  if (!verifyPassword(adminPassword, db.adminConfig.salt, db.adminConfig.hash)) {
+    return res.status(401).json({ error: "Incorrect administrator password." });
+  }
+
+  const adminToken = crypto.randomBytes(32).toString('hex');
+  db.sessions[adminToken] = '__ADMIN__';
+  saveDB(db);
+
+  res.json({ success: true, adminToken });
+});
+
+// Admin Control Endpoints
+app.get('/api/admin/users', adminAuthMiddleware, (req, res) => {
+  const userList = Object.values(db.users).map(u => ({
+    username: u.username,
+    level: u.level,
+    wins: u.wins,
+    streak: u.streak,
+    badges: u.badges || [],
+    isBanned: !!u.isBanned
+  }));
+  res.json({ users: userList });
+});
+
+app.post('/api/admin/ban', adminAuthMiddleware, (req, res) => {
+  const { username, ban } = req.body;
+  if (!db.users[username]) return res.status(404).json({ error: "User not found." });
+  db.users[username].isBanned = !!ban;
+  saveDB(db);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/give-badge', adminAuthMiddleware, (req, res) => {
+  const { username, badge } = req.body;
+  if (!db.users[username]) return res.status(404).json({ error: "User not found." });
+  if (!db.users[username].badges) db.users[username].badges = [];
+
+  // Prevent duplicate badges by ID
+  db.users[username].badges = db.users[username].badges.filter(b => b.id !== badge.id);
+  db.users[username].badges.push(badge);
+  saveDB(db);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/set-daily', adminAuthMiddleware, (req, res) => {
+  const { start, target } = req.body;
+  if (!start || !target) return res.status(400).json({ error: "Both start and target required." });
+  db.customDaily = { start: start.trim().replace(/ /g, '_'), target: target.trim().replace(/ /g, '_') };
+  db.dailyLeaderboard = []; // Reset leaderboard for new articles
+  saveDB(db);
+  res.json({ success: true });
+});
+
+// --- 4. AUTHENTICATION & USER ENDPOINTS ---
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
   const cleanName = (username || '').trim();
 
-  if (!cleanName || cleanName.length < 3) {
-    return res.status(400).json({ error: "Username must be at least 3 characters." });
-  }
-  if (!password || password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters." });
-  }
+  if (!cleanName || cleanName.length < 3) return res.status(400).json({ error: "Username must be 3+ characters." });
+  if (!password || password.length < 6) return res.status(400).json({ error: "Password must be 6+ characters." });
 
-  // Check case-insensitive collision
-  const exists = Object.keys(db.users).some(u => u.toLowerCase() === cleanName.toLowerCase());
-  if (exists) {
-    return res.status(409).json({ error: "This username is already taken. Please log in instead." });
+  if (Object.keys(db.users).some(u => u.toLowerCase() === cleanName.toLowerCase())) {
+    return res.status(409).json({ error: "Username already taken." });
   }
 
   const { salt, hash } = hashPassword(password);
@@ -89,8 +200,8 @@ app.post('/api/register', (req, res) => {
     wins: 0,
     streak: 0,
     dailyAttempts: 0,
-    lastDailyDate: null,
-    joinedAt: Date.now()
+    badges: [],
+    isBanned: false
   };
 
   db.users[cleanName] = newUser;
@@ -101,42 +212,42 @@ app.post('/api/register', (req, res) => {
   res.json({ token, user: safeUser });
 });
 
-// Login Existing Account
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  const cleanName = (username || '').trim();
+  const user = db.users[(username || '').trim()];
 
-  const user = db.users[cleanName];
   if (!user || !verifyPassword(password, user.salt, user.hash)) {
     return res.status(401).json({ error: "Incorrect username or password." });
   }
+  if (user.isBanned) {
+    return res.status(403).json({ error: "Your account is permanently suspended." });
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
-  db.sessions[token] = cleanName;
+  db.sessions[token] = user.username;
   saveDB(db);
 
   const { salt, hash, ...safeUser } = user;
   res.json({ token, user: safeUser });
 });
 
-// Fetch Profile
 app.get('/api/me', authMiddleware, (req, res) => {
   const { salt, hash, ...safeUser } = req.user;
   res.json({ user: safeUser });
 });
 
-// --- 4. DETERMINISTIC DAILY CHALLENGE & LEADERBOARD ---
+// --- 5. DAILY CHALLENGE & LEADERBOARD ---
 const CURATED_PAIRS = [
   { start: "The_Great_Barrier_Reef", target: "Quantum_computing" },
   { start: "Renaissance", target: "Artificial_intelligence" },
   { start: "Cleopatra", target: "Moon_landing" },
-  { start: "Coffee", target: "Black_hole" },
-  { start: "Ancient_Egypt", target: "Internet" },
-  { start: "Samurai", target: "Silicon_Valley" },
-  { start: "Leonardo_da_Vinci", target: "Nuclear_power" }
+  { start: "Coffee", target: "Black_hole" }
 ];
 
 function getDailyChallenge() {
+  if (db.customDaily) {
+    return { day: 'Custom', ...db.customDaily };
+  }
   const now = new Date();
   const dayOfYear = Math.floor((now - new Date(now.getUTCFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
   const pair = CURATED_PAIRS[dayOfYear % CURATED_PAIRS.length];
@@ -148,29 +259,34 @@ app.get('/api/daily', (req, res) => {
 });
 
 app.get('/api/daily-leaderboard', (req, res) => {
+  const leaderboardWithBadges = db.dailyLeaderboard.map(entry => {
+    const user = db.users[entry.username];
+    return { ...entry, badges: user ? user.badges || [] : [] };
+  });
+
   res.json({
-    leaderboard: db.dailyLeaderboard
+    leaderboard: leaderboardWithBadges
       .sort((a, b) => a.clicks - b.clicks || a.timeSeconds - b.timeSeconds)
       .slice(0, 50)
   });
 });
 
-// Authenticated Daily Submit
 app.post('/api/daily-submit', authMiddleware, (req, res) => {
   const { clicks, timeSeconds, attempt, route } = req.body;
-  const username = req.username;
-
-  db.dailyLeaderboard.push({
-    username,
-    clicks,
-    timeSeconds,
-    attempt: attempt || 1,
-    route: route || [],
-    timestamp: Date.now()
-  });
-
-  // Award EXP & Streak
   const user = req.user;
+
+  // Strict enforcement: runs beyond attempt 3 are unranked
+  if (attempt <= 3) {
+    db.dailyLeaderboard.push({
+      username: user.username,
+      clicks,
+      timeSeconds,
+      attempt,
+      route: route || [],
+      timestamp: Date.now()
+    });
+  }
+
   user.exp += 250;
   user.streak += 1;
   user.dailyAttempts = (user.dailyAttempts || 0) + 1;
@@ -185,11 +301,9 @@ app.post('/api/daily-submit', authMiddleware, (req, res) => {
   res.json({ success: true, user: safeUser });
 });
 
-// Update Profile Post-Match (Multiplayer / Practice)
 app.post('/api/match-finish', authMiddleware, (req, res) => {
   const { won, exp } = req.body;
   const user = req.user;
-
   user.exp += (exp || 50);
   if (won) user.wins += 1;
 
@@ -203,7 +317,7 @@ app.post('/api/match-finish', authMiddleware, (req, res) => {
   res.json({ success: true, user: safeUser });
 });
 
-// --- 5. MULTIPLAYER ROOM & WIN-CONDITION ENGINE ---
+// --- 6. MULTIPLAYER ROOM ENGINE ---
 const rooms = new Map();
 
 io.on('connection', (socket) => {
@@ -222,8 +336,7 @@ io.on('connection', (socket) => {
         winCondition: rules?.winCondition || 'BOTH',
         banNewTabs: rules?.banNewTabs ?? true,
         banCtrlF: rules?.banCtrlF ?? true,
-        banTabSwitch: rules?.banTabSwitch ?? true,
-        maxAttempts: rules?.maxAttempts || 3
+        banTabSwitch: rules?.banTabSwitch ?? true
       },
       players: new Map()
     };
@@ -250,7 +363,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(cleanId);
 
     if (!room) return socket.emit('error_message', "Room does not exist.");
-    if (room.status !== 'LOBBY') return socket.emit('error_message', "Match is already in progress.");
+    if (room.status !== 'LOBBY') return socket.emit('error_message', "Match is in progress.");
 
     room.players.set(socket.id, {
       id: socket.id,
@@ -295,7 +408,6 @@ io.on('connection', (socket) => {
       player.finishTimeSeconds = timeSeconds || 0;
 
       const finished = Array.from(room.players.values()).filter(p => p.isFinished);
-
       finished.sort((a, b) => {
         if (room.rules.winCondition === 'TIME') return a.finishTimeSeconds - b.finishTimeSeconds;
         if (room.rules.winCondition === 'STEPS') return a.currentClicks - b.currentClicks;
@@ -304,11 +416,6 @@ io.on('connection', (socket) => {
       });
 
       io.to(roomId).emit('player_finished_run', {
-        winnerName: finished[0].username,
-        finisher: player.username,
-        clicks: player.currentClicks,
-        timeSeconds: player.finishTimeSeconds,
-        winCondition: room.rules.winCondition,
         standings: finished.map(p => ({
           username: p.username,
           clicks: p.currentClicks,
@@ -333,7 +440,7 @@ io.on('connection', (socket) => {
     player.isDisqualified = true;
     io.to(roomId).emit('player_disqualified', {
       username: player.username,
-      reason: "Tab minimized / window lost focus"
+      reason: "Window focus lost."
     });
   });
 
@@ -369,4 +476,4 @@ function serializeRoom(room) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`WikiSprint live on port ${PORT}`));
+server.listen(PORT, () => console.log(`WikiSprint active on port ${PORT}`));
