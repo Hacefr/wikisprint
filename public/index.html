@@ -59,6 +59,7 @@
 
       <button onclick="toggleProfileModal()" class="flex items-center gap-1.5 hover:bg-wiki-bgLight dark:hover:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-2 py-1 rounded-sm transition">
         <span id="nav-username" class="font-medium text-wiki-blue dark:text-blue-400 max-w-[90px] sm:max-w-[140px] truncate">User:...</span>
+        <span id="nav-badges" class="inline-flex items-center"></span>
         <span id="nav-level" class="bg-[#eaecf0] dark:bg-wiki-surfaceDark border border-wiki-borderLight dark:border-wiki-borderDark px-1 text-[10px] font-mono font-bold">
           Lv.1
         </span>
@@ -193,7 +194,9 @@
     </div>
   </main>
 
-  <!-- AUTH MODAL -->
+  <!-- ================= MODALS ================= -->
+
+  <!-- 1. AUTHENTICATION MODAL (LOG IN / REGISTER) -->
   <div id="auth-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full max-h-[90dvh] overflow-y-auto shadow-2xl">
       <div class="flex border-b border-wiki-border text-xs font-semibold">
@@ -227,7 +230,19 @@
     </div>
   </div>
 
-  <!-- MULTIPLAYER LOBBY MODAL -->
+  <!-- 2. BADGE INSPECTOR MODAL -->
+  <div id="badge-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-xs w-full p-4 shadow-xl text-center">
+      <div id="badge-modal-icon" class="text-4xl mb-2">🛡️</div>
+      <h3 id="badge-modal-title" class="font-serif font-bold text-sm mb-1 text-wiki-blue">Badge Name</h3>
+      <p id="badge-modal-desc" class="text-xs text-wiki-textSecondary mb-4">Badge description...</p>
+      <button onclick="document.getElementById('badge-modal').classList.add('hidden')" class="w-full bg-[#3366cc] text-white text-xs font-semibold py-1.5 rounded-sm">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- 3. MULTIPLAYER LOBBY STAGING MODAL -->
   <div id="lobby-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-md w-full shadow-2xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2 flex justify-between items-center text-xs">
@@ -249,7 +264,7 @@
     </div>
   </div>
 
-  <!-- LEADERBOARD MODAL -->
+  <!-- 4. LEADERBOARD MODAL -->
   <div id="leaderboard-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-xl w-full max-h-[90dvh] flex flex-col shadow-xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-3 py-2 flex justify-between items-center">
@@ -273,7 +288,7 @@
     </div>
   </div>
 
-  <!-- PROFILE MODAL -->
+  <!-- 5. PROFILE MODAL -->
   <div id="profile-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full p-4 sm:p-5 space-y-3 shadow-xl">
       <div class="flex justify-between items-center border-b border-wiki-borderLight pb-2">
@@ -299,6 +314,10 @@
           <div id="profile-exp-bar" class="bg-wiki-blue h-full" style="width: 0%"></div>
         </div>
       </div>
+      <div>
+        <span class="text-[10px] text-wiki-textSecondary block uppercase font-bold mb-1">Badges Earned:</span>
+        <div id="profile-badges-container" class="flex flex-wrap gap-1"></div>
+      </div>
       <div class="text-xs pt-1 border-t border-wiki-borderLight flex justify-between font-mono">
         <span>Wins: <b id="profile-wins">0</b></span>
         <span>Streak: <b id="profile-streak" class="text-amber-500">0 🔥</b></span>
@@ -313,6 +332,25 @@
     let authMode = 'login';
 
     function getToken() { return localStorage.getItem('wikisprint_token'); }
+
+    // --- Interactive Badge Tooltip Inspector ---
+    function inspectBadge(name, icon, desc) {
+      document.getElementById('badge-modal-icon').innerText = icon;
+      document.getElementById('badge-modal-title').innerText = decodeURIComponent(name);
+      document.getElementById('badge-modal-desc').innerText = decodeURIComponent(desc);
+      document.getElementById('badge-modal').classList.remove('hidden');
+    }
+
+    function renderBadges(badges) {
+      if (!badges || badges.length === 0) return '';
+      return badges.map(b => `
+        <span onclick="inspectBadge('${encodeURIComponent(b.name)}', '${b.icon}', '${encodeURIComponent(b.description)}')" 
+              class="inline-block cursor-pointer hover:scale-125 transition ml-0.5" 
+              title="${b.name}">
+          ${b.icon}
+        </span>
+      `).join('');
+    }
 
     async function checkAuth() {
       const token = getToken();
@@ -393,6 +431,8 @@
       document.getElementById('nav-username').innerText = `User:${u.username}`;
       document.getElementById('nav-streak').innerText = u.streak;
       document.getElementById('nav-level').innerText = `Lv.${u.level}`;
+      document.getElementById('nav-badges').innerHTML = renderBadges(u.badges);
+      
       document.getElementById('profile-title').innerText = `User: ${u.username}`;
       document.getElementById('profile-rank').innerText = u.level > 10 ? 'Administrator' : u.level > 5 ? 'Rollbacker' : 'Editor';
       document.getElementById('profile-level').innerText = u.level;
@@ -403,6 +443,13 @@
       document.getElementById('profile-exp-text').innerText = `${u.exp} / ${expNeeded}`;
       document.getElementById('profile-exp-bar').style.width = `${Math.min(100, (u.exp / expNeeded) * 100)}%`;
       document.getElementById('attempt-pips').innerText = `${u.dailyAttempts || 0}/3`;
+
+      const profileBadges = document.getElementById('profile-badges-container');
+      if (u.badges && u.badges.length > 0) {
+        profileBadges.innerHTML = renderBadges(u.badges);
+      } else {
+        profileBadges.innerHTML = '<span class="text-xs text-gray-400">None yet</span>';
+      }
     }
 
     async function loadDaily() {
@@ -499,7 +546,9 @@
         tbody.innerHTML = data.leaderboard.map((r, i) => `
           <tr>
             <td class="p-1.5 text-center font-bold">${i + 1}</td>
-            <td class="p-1.5 text-wiki-blue font-medium truncate max-w-[100px]">${r.username}</td>
+            <td class="p-1.5 text-wiki-blue font-medium truncate max-w-[120px]">
+              ${r.username} ${renderBadges(r.badges)}
+            </td>
             <td class="p-1.5 text-center font-mono">#${r.attempt}</td>
             <td class="p-1.5 text-center font-mono font-bold">${r.clicks}</td>
             <td class="p-1.5 text-center font-mono">${Math.floor(r.timeSeconds / 60)}:${String(r.timeSeconds % 60).padStart(2, '0')}</td>
