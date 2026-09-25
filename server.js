@@ -2,6 +2,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,7 +12,120 @@ const io = new Server(server, { cors: { origin: "*" } });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 1. DETERMINISTIC DAILY CHALLENGE ENGINE
+// --- 1. LOCAL PERSISTENT DATABASE ---
+const DB_FILE = path.join(__dirname, 'database.json');
+
+function loadDB() {
+  if (!fs.existsSync(DB_FILE)) {
+    const initData = { users: {}, sessions: {}, dailyLeaderboard: [] };
+    fs.writeFileSync(DB_FILE, JSON.stringify(initData, null, 2));
+    return initData;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  } catch (e) {
+    return { users: {}, sessions: {}, dailyLeaderboard: [] };
+  }
+}
+
+function saveDB(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+let db = loadDB();
+
+// --- 2. CRYPTO UTILITIES ---
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return { salt, hash };
+}
+
+function verifyPassword(password, salt, hash) {
+  const checkHash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return checkHash === hash;
+}
+
+// Authentication Middleware
+function authMiddleware(req, res, next) {
+  const token = req.headers['authorization'];
+  if (!token || !db.sessions[token]) {
+    return res.status(401).json({ error: "Unauthorized. Please log in." });
+  }
+  req.username = db.sessions[token];
+  req.user = db.users[req.username];
+  next();
+}
+
+// --- 3. AUTHENTICATION ENDPOINTS ---
+
+// Register New Account
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  const cleanName = (username || '').trim();
+
+  if (!cleanName || cleanName.length < 3) {
+    return res.status(400).json({ error: "Username must be at least 3 characters." });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters." });
+  }
+
+  // Check case-insensitive collision
+  const exists = Object.keys(db.users).some(u => u.toLowerCase() === cleanName.toLowerCase());
+  if (exists) {
+    return res.status(409).json({ error: "This username is already taken. Please log in instead." });
+  }
+
+  const { salt, hash } = hashPassword(password);
+  const token = crypto.randomBytes(32).toString('hex');
+
+  const newUser = {
+    username: cleanName,
+    salt,
+    hash,
+    level: 1,
+    exp: 0,
+    wins: 0,
+    streak: 0,
+    dailyAttempts: 0,
+    lastDailyDate: null,
+    joinedAt: Date.now()
+  };
+
+  db.users[cleanName] = newUser;
+  db.sessions[token] = cleanName;
+  saveDB(db);
+
+  const { salt: _, hash: __, ...safeUser } = newUser;
+  res.json({ token, user: safeUser });
+});
+
+// Login Existing Account
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const cleanName = (username || '').trim();
+
+  const user = db.users[cleanName];
+  if (!user || !verifyPassword(password, user.salt, user.hash)) {
+    return res.status(401).json({ error: "Incorrect username or password." });
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  db.sessions[token] = cleanName;
+  saveDB(db);
+
+  const { salt, hash, ...safeUser } = user;
+  res.json({ token, user: safeUser });
+});
+
+// Fetch Profile
+app.get('/api/me', authMiddleware, (req, res) => {
+  const { salt, hash, ...safeUser } = req.user;
+  res.json({ user: safeUser });
+});
+
+// --- 4. DETERMINISTIC DAILY CHALLENGE & LEADERBOARD ---
 const CURATED_PAIRS = [
   { start: "The_Great_Barrier_Reef", target: "Quantum_computing" },
   { start: "Renaissance", target: "Artificial_intelligence" },
@@ -28,27 +143,24 @@ function getDailyChallenge() {
   return { day: dayOfYear, ...pair };
 }
 
-let dailyLeaderboard = [];
-
 app.get('/api/daily', (req, res) => {
   res.json({ daily: getDailyChallenge() });
 });
 
 app.get('/api/daily-leaderboard', (req, res) => {
   res.json({
-    leaderboard: dailyLeaderboard
+    leaderboard: db.dailyLeaderboard
       .sort((a, b) => a.clicks - b.clicks || a.timeSeconds - b.timeSeconds)
       .slice(0, 50)
   });
 });
 
-app.post('/api/daily-submit', (req, res) => {
-  const { username, clicks, timeSeconds, attempt, route } = req.body;
-  if (!username || clicks === undefined || timeSeconds === undefined) {
-    return res.status(400).json({ error: "Invalid payload" });
-  }
+// Authenticated Daily Submit
+app.post('/api/daily-submit', authMiddleware, (req, res) => {
+  const { clicks, timeSeconds, attempt, route } = req.body;
+  const username = req.username;
 
-  dailyLeaderboard.push({
+  db.dailyLeaderboard.push({
     username,
     clicks,
     timeSeconds,
@@ -56,15 +168,47 @@ app.post('/api/daily-submit', (req, res) => {
     route: route || [],
     timestamp: Date.now()
   });
-  res.json({ success: true });
+
+  // Award EXP & Streak
+  const user = req.user;
+  user.exp += 250;
+  user.streak += 1;
+  user.dailyAttempts = (user.dailyAttempts || 0) + 1;
+
+  if (user.exp >= user.level * 500) {
+    user.exp -= user.level * 500;
+    user.level += 1;
+  }
+
+  saveDB(db);
+  const { salt, hash, ...safeUser } = user;
+  res.json({ success: true, user: safeUser });
 });
 
-// 2. MULTIPLAYER ROOM & WIN-CONDITION ENGINE
+// Update Profile Post-Match (Multiplayer / Practice)
+app.post('/api/match-finish', authMiddleware, (req, res) => {
+  const { won, exp } = req.body;
+  const user = req.user;
+
+  user.exp += (exp || 50);
+  if (won) user.wins += 1;
+
+  if (user.exp >= user.level * 500) {
+    user.exp -= user.level * 500;
+    user.level += 1;
+  }
+
+  saveDB(db);
+  const { salt, hash, ...safeUser } = user;
+  res.json({ success: true, user: safeUser });
+});
+
+// --- 5. MULTIPLAYER ROOM & WIN-CONDITION ENGINE ---
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  // Host creates room with customizable win rules
-  socket.on('create_room', ({ username, rules, startPage, targetPage }) => {
+  socket.on('create_room', ({ token, rules, startPage, targetPage }) => {
+    const username = db.sessions[token] || `Guest_${socket.id.substring(0, 4)}`;
     const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
     const daily = getDailyChallenge();
 
@@ -75,7 +219,7 @@ io.on('connection', (socket) => {
       startPage: startPage || daily.start,
       targetPage: targetPage || daily.target,
       rules: {
-        winCondition: rules?.winCondition || 'BOTH', // 'BOTH' | 'TIME' | 'STEPS'
+        winCondition: rules?.winCondition || 'BOTH',
         banNewTabs: rules?.banNewTabs ?? true,
         banCtrlF: rules?.banCtrlF ?? true,
         banTabSwitch: rules?.banTabSwitch ?? true,
@@ -86,7 +230,7 @@ io.on('connection', (socket) => {
 
     room.players.set(socket.id, {
       id: socket.id,
-      username: username || "Host",
+      username,
       isHost: true,
       currentClicks: 0,
       currentPage: room.startPage,
@@ -100,8 +244,8 @@ io.on('connection', (socket) => {
     socket.emit('room_created', { roomId, room: serializeRoom(room) });
   });
 
-  // Join Room
-  socket.on('join_room', ({ roomId, username }) => {
+  socket.on('join_room', ({ roomId, token }) => {
+    const username = db.sessions[token] || `Guest_${socket.id.substring(0, 4)}`;
     const cleanId = (roomId || '').trim().toUpperCase();
     const room = rooms.get(cleanId);
 
@@ -110,7 +254,7 @@ io.on('connection', (socket) => {
 
     room.players.set(socket.id, {
       id: socket.id,
-      username: username || `Racer_${socket.id.substring(0, 4)}`,
+      username,
       isHost: false,
       currentClicks: 0,
       currentPage: room.startPage,
@@ -124,7 +268,6 @@ io.on('connection', (socket) => {
     io.to(cleanId).emit('room_updated', serializeRoom(room));
   });
 
-  // Host starts the race
   socket.on('start_race', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room || room.hostId !== socket.id) return;
@@ -136,7 +279,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Live Navigation & Target Reached
   socket.on('player_navigated', ({ roomId, newPage, timeSeconds }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== 'RACING') return;
@@ -146,28 +288,19 @@ io.on('connection', (socket) => {
     player.currentPage = newPage;
     player.currentClicks += 1;
 
-    // Check Win Condition
     const isTarget = newPage.toLowerCase().replace(/_/g, ' ') === room.targetPage.toLowerCase().replace(/_/g, ' ');
 
     if (isTarget) {
       player.isFinished = true;
       player.finishTimeSeconds = timeSeconds || 0;
 
-      // Calculate final match rankings based on selected rule
       const finished = Array.from(room.players.values()).filter(p => p.isFinished);
 
       finished.sort((a, b) => {
-        if (room.rules.winCondition === 'TIME') {
-          return a.finishTimeSeconds - b.finishTimeSeconds;
-        } else if (room.rules.winCondition === 'STEPS') {
-          return a.currentClicks - b.currentClicks;
-        } else {
-          // BOTH: Lowest Steps first; Lowest Time tiebreaker
-          if (a.currentClicks !== b.currentClicks) {
-            return a.currentClicks - b.currentClicks;
-          }
-          return a.finishTimeSeconds - b.finishTimeSeconds;
-        }
+        if (room.rules.winCondition === 'TIME') return a.finishTimeSeconds - b.finishTimeSeconds;
+        if (room.rules.winCondition === 'STEPS') return a.currentClicks - b.currentClicks;
+        if (a.currentClicks !== b.currentClicks) return a.currentClicks - b.currentClicks;
+        return a.finishTimeSeconds - b.finishTimeSeconds;
       });
 
       io.to(roomId).emit('player_finished_run', {
@@ -184,7 +317,6 @@ io.on('connection', (socket) => {
       });
     }
 
-    // Broadcast position to opponent HUDs
     io.to(roomId).emit('race_progress', {
       username: player.username,
       clicks: player.currentClicks,
@@ -192,7 +324,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Tab switch violation
   socket.on('violation_tab_switch', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room || !room.rules.banTabSwitch || room.status !== 'RACING') return;
@@ -238,4 +369,4 @@ function serializeRoom(room) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`WikiSprint live at http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`WikiSprint live on port ${PORT}`));
