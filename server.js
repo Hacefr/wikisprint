@@ -5,79 +5,83 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 
-// Initialize Socket.io with CORS enabled
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
-// Serve frontend files from the "public" folder
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory room store (Use Redis if scaling across multiple server instances)
+// --- 1. DETERMINISTIC DAILY CHALLENGE ENGINE ---
+const CURATED_PAIRS = [
+  { start: "The_Great_Barrier_Reef", target: "Quantum_computing" },
+  { start: "Renaissance", target: "Artificial_intelligence" },
+  { start: "Cleopatra", target: "Moon_landing" },
+  { start: "Coffee", target: "Black_hole" },
+  { start: "Ancient_Egypt", target: "Internet" },
+  { start: "Samurai", target: "Silicon_Valley" },
+  { start: "Leonardo_da_Vinci", target: "Nuclear_power" }
+];
+
+function getDailyChallenge() {
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getUTCFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+  const pair = CURATED_PAIRS[dayOfYear % CURATED_PAIRS.length];
+  return { day: dayOfYear, ...pair };
+}
+
+// Global in-memory daily leaderboard
+let dailyLeaderboard = [];
+
+app.get('/api/daily', (req, res) => {
+  res.json({ daily: getDailyChallenge() });
+});
+
+app.get('/api/daily-leaderboard', (req, res) => {
+  res.json({ leaderboard: dailyLeaderboard.sort((a, b) => a.clicks - b.clicks || a.timeSeconds - b.timeSeconds).slice(0, 50) });
+});
+
+app.post('/api/daily-submit', (req, res) => {
+  const { username, clicks, timeSeconds, attempt, route } = req.body;
+  if (!username || !clicks || !timeSeconds) return res.status(400).json({ error: "Invalid data" });
+  
+  dailyLeaderboard.push({
+    username,
+    clicks,
+    timeSeconds,
+    attempt: attempt || 1,
+    route: route || [],
+    timestamp: Date.now()
+  });
+  res.json({ success: true });
+});
+
+// --- 2. MULTIPLAYER ROOM & SYNC ENGINE ---
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
-
-  // 1. Host creates a custom room
+  // Create Room
   socket.on('create_room', ({ username, rules, startPage, targetPage }) => {
-    // Generate a 5-character alphanumeric room code
     const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const daily = getDailyChallenge();
 
-    const roomData = {
+    const room = {
       id: roomId,
       hostId: socket.id,
       status: 'LOBBY', // LOBBY, RACING, FINISHED
-      startPage: startPage || "The Great Barrier Reef",
-      targetPage: targetPage || "Quantum computing",
+      startPage: startPage || daily.start,
+      targetPage: targetPage || daily.target,
       rules: {
-        maxAttempts: rules.maxAttempts || 3,
-        banCtrlF: rules.banCtrlF ?? true,
-        banTabSwitch: rules.banTabSwitch ?? true,
-        allowBacktrack: rules.allowBacktrack ?? false
+        maxAttempts: rules?.maxAttempts || 3,
+        banCtrlF: rules?.banCtrlF ?? true,
+        banTabSwitch: rules?.banTabSwitch ?? true,
+        allowBacktrack: rules?.allowBacktrack ?? false
       },
       players: new Map()
     };
 
-    // Add host as player
-    roomData.players.set(socket.id, {
-      id: socket.id,
-      username: username || "Host",
-      attemptsUsed: 0,
-      currentClicks: 0,
-      currentPage: roomData.startPage,
-      isFinished: false,
-      isDisqualified: false,
-      finishTime: null
-    });
-
-    rooms.set(roomId, roomData);
-    socket.join(roomId);
-
-    socket.emit('room_created', { roomId, roomData: serializeRoom(roomData) });
-  });
-
-  // 2. Player joins room via code
-  socket.on('join_room', ({ roomId, username }) => {
-    const cleanCode = roomId.trim().toUpperCase();
-    const room = rooms.get(cleanCode);
-
-    if (!room) {
-      return socket.emit('error_message', 'Room not found.');
-    }
-
-    if (room.status === 'RACING') {
-      return socket.emit('error_message', 'Match is already in progress.');
-    }
-
     room.players.set(socket.id, {
       id: socket.id,
-      username: username || `Racer_${socket.id.substring(0, 4)}`,
-      attemptsUsed: 0,
+      username: username || "Host",
+      isHost: true,
       currentClicks: 0,
       currentPage: room.startPage,
       isFinished: false,
@@ -85,87 +89,119 @@ io.on('connection', (socket) => {
       finishTime: null
     });
 
-    socket.join(cleanCode);
-    io.to(cleanCode).emit('player_list_updated', serializeRoom(room));
+    rooms.set(roomId, room);
+    socket.join(roomId);
+    socket.emit('room_created', { roomId, room: serializeRoom(room) });
   });
 
-  // 3. Player clicks a link inside Wikipedia
+  // Join Room
+  socket.on('join_room', ({ roomId, username }) => {
+    const cleanId = (roomId || '').trim().toUpperCase();
+    const room = rooms.get(cleanId);
+
+    if (!room) return socket.emit('error_message', "Room does not exist.");
+    if (room.status !== 'LOBBY') return socket.emit('error_message', "Match already started.");
+
+    room.players.set(socket.id, {
+      id: socket.id,
+      username: username || `Racer_${socket.id.substring(0, 4)}`,
+      isHost: false,
+      currentClicks: 0,
+      currentPage: room.startPage,
+      isFinished: false,
+      isDisqualified: false,
+      finishTime: null
+    });
+
+    socket.join(cleanId);
+    socket.emit('room_joined', { roomId: cleanId, room: serializeRoom(room) });
+    io.to(cleanId).emit('room_updated', serializeRoom(room));
+  });
+
+  // Host starts game
+  socket.on('start_race', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    room.status = 'RACING';
+    io.to(roomId).emit('race_started', {
+      startPage: room.startPage,
+      targetPage: room.targetPage,
+      rules: room.rules
+    });
+  });
+
+  // Player navigates in real-time
   socket.on('player_navigated', ({ roomId, newPage }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== 'RACING') return;
-
     const player = room.players.get(socket.id);
     if (!player || player.isDisqualified || player.isFinished) return;
 
     player.currentPage = newPage;
     player.currentClicks += 1;
 
-    // Check Win Condition
-    if (newPage.toLowerCase() === room.targetPage.toLowerCase()) {
+    // Check Win
+    if (newPage.toLowerCase().replace(/_/g, ' ') === room.targetPage.toLowerCase().replace(/_/g, ' ')) {
       player.isFinished = true;
       player.finishTime = Date.now();
-      io.to(roomId).emit('player_finished', {
-        playerId: socket.id,
+      io.to(roomId).emit('player_won', {
         username: player.username,
         clicks: player.currentClicks
       });
     }
 
-    // Broadcast live update to opponents
     io.to(roomId).emit('race_progress', {
       playerId: socket.id,
-      currentPage: player.currentPage,
-      clicks: player.currentClicks
+      username: player.username,
+      clicks: player.currentClicks,
+      currentPage: player.currentPage
     });
   });
 
-  // 4. Rule Violation: Tab Switch / Blur
+  // Rule violation: Tab switch
   socket.on('violation_tab_switch', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room || !room.rules.banTabSwitch || room.status !== 'RACING') return;
-
     const player = room.players.get(socket.id);
     if (!player || player.isDisqualified) return;
 
-    player.attemptsUsed += 1;
-
-    if (player.attemptsUsed >= room.rules.maxAttempts) {
-      player.isDisqualified = true;
-      io.to(roomId).emit('player_disqualified', {
-        playerId: socket.id,
-        username: player.username,
-        reason: 'Tab switch / focus loss'
-      });
-    } else {
-      socket.emit('attempt_failed', {
-        reason: 'Tab switch detected! Attempt lost.',
-        attemptsUsed: player.attemptsUsed
-      });
-    }
+    player.isDisqualified = true;
+    io.to(roomId).emit('player_disqualified', {
+      username: player.username,
+      reason: "Tab minimized / focus lost"
+    });
   });
 
-  // 5. Handle Disconnect
   socket.on('disconnect', () => {
     rooms.forEach((room, roomId) => {
       if (room.players.has(socket.id)) {
         room.players.delete(socket.id);
-        io.to(roomId).emit('player_list_updated', serializeRoom(room));
-        if (room.players.size === 0) rooms.delete(roomId);
+        if (room.players.size === 0) {
+          rooms.delete(roomId);
+        } else {
+          if (room.hostId === socket.id) {
+            const nextHost = room.players.keys().next().value;
+            room.hostId = nextHost;
+            room.players.get(nextHost).isHost = true;
+          }
+          io.to(roomId).emit('room_updated', serializeRoom(room));
+        }
       }
     });
   });
 });
 
-// Helper: Convert Map to plain JS object for socket serialization
 function serializeRoom(room) {
   return {
-    ...room,
+    id: room.id,
+    hostId: room.hostId,
+    status: room.status,
+    startPage: room.startPage,
+    targetPage: room.targetPage,
+    rules: room.rules,
     players: Array.from(room.players.values())
   };
 }
 
-// Render supplies the port dynamically in process.env.PORT
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`WikiSprint live on port ${PORT}`));
