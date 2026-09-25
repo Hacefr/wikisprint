@@ -2,72 +2,101 @@
 <html lang="en" class="light">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>WikiSprint — Racing...</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    #wiki-body a { color: #3366cc; text-decoration: none; cursor: pointer; }
-    #wiki-body a:hover { text-decoration: underline; }
-    #wiki-body a.disabled-link { color: inherit !important; text-decoration: none !important; cursor: default !important; }
-    #wiki-body p { margin-bottom: 0.85rem; line-height: 1.6; }
-    #wiki-body h2 { font-family: Georgia, serif; font-size: 1.4rem; border-bottom: 1px solid #c8ccd1; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-    #wiki-body h3 { font-family: Georgia, serif; font-size: 1.15rem; margin-top: 1.2rem; margin-bottom: 0.4rem; }
-    #wiki-body ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.8rem; }
-    #wiki-body table { border: 1px solid #a2a9b1; margin-bottom: 1rem; font-size: 0.85rem; border-collapse: collapse; }
-    #wiki-body th, #wiki-body td { border: 1px solid #c8ccd1; padding: 0.3rem 0.6rem; }
+    /* Prevent mobile tap highlights & force touch context security */
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+    #wiki-body {
+      -webkit-touch-callout: none; /* Disables iOS long-press preview / open in tab */
+      user-select: text;
+    }
+    #wiki-body a { 
+      color: #3366cc; 
+      text-decoration: none; 
+      cursor: pointer;
+      display: inline-block;
+      padding: 1px 0; /* Slightly larger tap area for fingers */
+    }
+    #wiki-body a:active { text-decoration: underline; background-color: rgba(51, 102, 204, 0.1); }
+    #wiki-body a.disabled-link { color: inherit !important; text-decoration: none !important; cursor: default !important; pointer-events: none; }
+    
+    /* Responsive Wikipedia Content */
+    #wiki-body p { margin-bottom: 0.85rem; line-height: 1.6; font-size: 15px; }
+    #wiki-body h2 { font-family: Georgia, serif; font-size: 1.25rem; border-bottom: 1px solid #c8ccd1; margin-top: 1.3rem; margin-bottom: 0.4rem; font-weight: normal; }
+    #wiki-body h3 { font-family: Georgia, serif; font-size: 1.05rem; margin-top: 1rem; margin-bottom: 0.3rem; }
+    #wiki-body ul { list-style-type: disc; margin-left: 1.25rem; margin-bottom: 0.8rem; }
+    
+    /* Mobile-scrollable tables and infoboxes */
+    #wiki-body table, #wiki-body .infobox {
+      max-width: 100% !important;
+      display: block !important;
+      overflow-x: auto !important;
+      border: 1px solid #a2a9b1;
+      margin-bottom: 1rem;
+      font-size: 0.8rem;
+    }
+    #wiki-body img {
+      max-width: 100% !important;
+      height: auto !important;
+    }
   </style>
 </head>
 <body class="bg-[#f8f9fa] text-[#202122] min-h-screen flex flex-col font-sans select-none">
 
-  <!-- HUD Bar -->
-  <header class="sticky top-0 z-40 bg-white border-b border-[#a2a9b1] px-4 py-2 flex items-center justify-between text-xs shadow-sm">
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-1.5">
-        <span class="font-bold text-[#54595d] uppercase text-[10px]">GOAL:</span>
-        <span id="hud-target" class="font-serif text-sm font-bold text-[#3366cc]"></span>
+  <!-- Mobile HUD (Compact 2-Row / Sticky) -->
+  <header class="sticky top-0 z-40 bg-white border-b border-[#a2a9b1] px-3 py-1.5 text-xs shadow-sm flex flex-col gap-1">
+    
+    <!-- Row 1: Target Mission -->
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1 min-w-0">
+        <span class="font-bold text-[#54595d] uppercase text-[10px] shrink-0">GOAL:</span>
+        <span id="hud-target" class="font-serif text-xs sm:text-sm font-bold text-[#3366cc] truncate"></span>
       </div>
-      <div class="border-l border-[#c8ccd1] pl-3 flex items-center gap-1 text-[11px] text-[#54595d]">
-        <span>RULE:</span>
-        <span id="hud-rule-badge" class="font-bold text-[#202122]"></span>
-      </div>
+      <span id="hud-rule-badge" class="shrink-0 text-[10px] font-bold bg-[#eaecf0] px-1.5 py-0.5 rounded-sm text-[#54595d]"></span>
     </div>
 
-    <div class="flex items-center gap-6 font-mono text-xs">
-      <div>CLICKS: <span id="hud-clicks" class="font-bold text-sm">0</span></div>
-      <div>TIME: <span id="hud-timer" class="font-bold text-sm">00:00</span></div>
-    </div>
-
-    <div id="hud-opponents" class="hidden flex items-center gap-2 font-mono text-[11px]">
-      <span class="text-[#54595d]">Live:</span>
-      <div id="opponents-ticker" class="flex gap-2"></div>
+    <!-- Row 2: Live Counters & Opponents -->
+    <div class="flex items-center justify-between font-mono text-[11px] pt-0.5 border-t border-gray-100">
+      <div class="flex items-center gap-3">
+        <div>CLICKS: <b id="hud-clicks" class="text-xs">0</b></div>
+        <div>TIME: <b id="hud-timer" class="text-xs">00:00</b></div>
+      </div>
+      <div id="hud-opponents" class="hidden flex items-center gap-1.5 overflow-hidden">
+        <span class="text-[#54595d] text-[10px]">Opponent:</span>
+        <div id="opponents-ticker" class="truncate max-w-[130px]"></div>
+      </div>
     </div>
   </header>
 
-  <!-- Embedded Article Frame -->
-  <main class="flex-1 max-w-4xl w-full mx-auto p-6 md:p-10 bg-white border-x border-[#c8ccd1] my-4">
-    <h1 id="article-header" class="font-serif text-3xl pb-2 border-b border-[#c8ccd1] mb-4">Accessing encyclopedia...</h1>
-    <div id="wiki-body" class="text-sm"></div>
+  <!-- Article View Area -->
+  <main class="flex-1 max-w-4xl w-full mx-auto p-3.5 sm:p-8 bg-white border-x border-[#c8ccd1] my-2 sm:my-4">
+    <h1 id="article-header" class="font-serif text-xl sm:text-3xl pb-2 border-b border-[#c8ccd1] mb-3">Loading entry...</h1>
+    <div id="wiki-body"></div>
   </main>
 
-  <!-- Victory / Podium Modal -->
-  <div id="win-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white border border-[#a2a9b1] max-w-md w-full p-6 text-center shadow-2xl">
-      <span class="text-4xl block mb-2">🏆</span>
-      <h2 id="win-title" class="font-serif text-2xl font-bold mb-1">Target Reached!</h2>
-      <p id="win-subtitle" class="text-xs text-[#54595d] mb-4">Navigated successfully to destination article.</p>
+  <!-- VICTORY MODAL -->
+  <div id="win-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3.5 hidden">
+    <div class="bg-white border border-[#a2a9b1] max-w-xs sm:max-w-md w-full p-5 text-center shadow-2xl">
+      <span class="text-3xl block mb-1">🏆</span>
+      <h2 id="win-title" class="font-serif text-xl font-bold mb-1">Target Reached!</h2>
+      <p class="text-xs text-[#54595d] mb-3">Course completed successfully.</p>
 
-      <div class="grid grid-cols-2 gap-2 text-xs border border-[#c8ccd1] p-3 mb-4 font-mono">
+      <div class="grid grid-cols-2 gap-2 text-xs border border-[#c8ccd1] p-2.5 mb-3 font-mono">
         <div>CLICKS: <b id="win-clicks">0</b></div>
         <div>TIME: <b id="win-time">00:00</b></div>
       </div>
 
-      <div id="multiplayer-standings" class="hidden mb-4 border border-[#c8ccd1] text-xs">
-        <div class="bg-[#eaecf0] px-3 py-1 font-bold text-left border-b border-[#c8ccd1]">Match Standings</div>
-        <div id="standings-rows" class="p-2 space-y-1 font-mono text-left"></div>
+      <div id="multiplayer-standings" class="hidden mb-3 border border-[#c8ccd1] text-xs text-left max-h-32 overflow-y-auto">
+        <div class="bg-[#eaecf0] px-2 py-1 font-bold">Standings</div>
+        <div id="standings-rows" class="p-2 space-y-1 font-mono text-[11px]"></div>
       </div>
 
-      <div id="win-exp-tag" class="bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs font-bold py-1.5 mb-4">
+      <div id="win-exp-tag" class="bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs font-bold py-1 mb-3">
         +250 EXP Gained!
       </div>
 
@@ -97,8 +126,7 @@
 
     document.getElementById('hud-target').innerText = decodeURIComponent(targetArticle).replace(/_/g, ' ');
     document.getElementById('hud-rule-badge').innerText = 
-      winCondition === 'TIME' ? 'Fastest Time' : 
-      winCondition === 'STEPS' ? 'Fewest Clicks' : 'Fewest Clicks (Time Tiebreak)';
+      winCondition === 'TIME' ? 'Speedrun' : winCondition === 'STEPS' ? 'Fewest Clicks' : 'Clicks + Time';
 
     function startTimer() {
       timer = setInterval(() => {
@@ -112,12 +140,11 @@
     async function fetchArticle(title) {
       document.getElementById('article-header').innerText = decodeURIComponent(title).replace(/_/g, ' ');
       const container = document.getElementById('wiki-body');
-      container.innerHTML = "<p class='italic text-gray-500'>Querying Wikimedia Foundation...</p>";
+      container.innerHTML = "<p class='italic text-gray-500'>Querying Wikimedia API...</p>";
 
       try {
         const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(title)}`);
         const html = await res.text();
-
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
@@ -158,49 +185,41 @@
       }
     }
 
-    // RULE ENFORCEMENT: BAN CTRL+F
+    // ANTI-CHEAT ENFORCEMENTS
     window.addEventListener('keydown', (e) => {
       if (banCtrlF && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        alert("Rule Violation: In-page search (Ctrl+F) is disabled!");
+        alert("Ctrl+F search is prohibited!");
       }
     });
 
-    // RULE ENFORCEMENT: BAN LEAVING TAB
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && banTabSwitch) {
         if (roomId) socket.emit('violation_tab_switch', { roomId });
-        alert("Rule Violation: Leaving window/tab forfeits match!");
+        alert("Tab switched or minimized! Match forfeited.");
         window.location.href = '/';
       }
     });
 
-    // RULE ENFORCEMENT: BAN NEW TABS
+    // MOBILE TOUCH ANTI-CHEAT (Neutralize long press & context menu)
     if (banNewTabs) {
       const container = document.getElementById('wiki-body');
       
+      container.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('a')) e.preventDefault();
+      });
+
       container.addEventListener('auxclick', (e) => {
-        if (e.target.closest('a') && e.button === 1) {
-          e.preventDefault();
-          alert("Rule Violation: Opening links in new tabs is banned!");
-        }
+        if (e.target.closest('a') && e.button === 1) e.preventDefault();
       });
 
       container.addEventListener('click', (e) => {
         if (e.target.closest('a') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
           e.preventDefault();
-          alert("Rule Violation: Opening links in new tabs is banned!");
         }
       }, true);
-
-      container.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('a')) {
-          e.preventDefault();
-        }
-      });
     }
 
-    // AUTHENTICATED SCORE SUBMISSION
     async function triggerVictory() {
       clearInterval(timer);
       document.getElementById('win-clicks').innerText = clicks;
@@ -213,27 +232,14 @@
       if (mode === 'daily') {
         await fetch('/api/daily-submit', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': token
-          },
-          body: JSON.stringify({
-            clicks,
-            timeSeconds: secondsElapsed,
-            route
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': token },
+          body: JSON.stringify({ clicks, timeSeconds: secondsElapsed, route })
         });
       } else {
         await fetch('/api/match-finish', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': token
-          },
-          body: JSON.stringify({
-            won: true,
-            exp: mode === 'multiplayer' ? 100 : 50
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': token },
+          body: JSON.stringify({ won: true, exp: mode === 'multiplayer' ? 100 : 50 })
         });
       }
     }
@@ -245,7 +251,7 @@
 
       socket.on('race_progress', (data) => {
         const ticker = document.getElementById('opponents-ticker');
-        ticker.innerHTML = `<span class="bg-gray-100 border border-gray-300 px-1 py-0.5 rounded">${data.username}: ${data.clicks} clicks</span>`;
+        ticker.innerHTML = `<span class="bg-gray-100 border border-gray-300 px-1 rounded">${data.username}: ${data.clicks}c</span>`;
       });
 
       socket.on('player_finished_run', (data) => {
