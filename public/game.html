@@ -56,7 +56,6 @@
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
-        <!-- SINGLEPLAYER RESET BUTTON -->
         <button id="btn-reset" onclick="resetRun()" class="border border-[#a2a9b1] bg-white px-2 py-0.5 rounded-sm text-[11px] font-semibold hover:bg-gray-100 cursor-pointer">
           ↻ Reset
         </button>
@@ -96,7 +95,7 @@
     <div class="bg-white border border-[#a2a9b1] max-w-xs sm:max-w-md w-full p-5 text-center shadow-2xl">
       <span class="text-3xl block mb-1">🏆</span>
       <h2 id="win-title" class="font-serif text-xl font-bold mb-1">Target Reached!</h2>
-      <p id="win-subtitle" class="text-xs text-[#54595d] mb-3">Course completed successfully.</p>
+      <p class="text-xs text-[#54595d] mb-3">Course completed successfully.</p>
 
       <div class="grid grid-cols-2 gap-2 text-xs border border-[#c8ccd1] p-2.5 mb-3 font-mono">
         <div>CLICKS: <b id="win-clicks">0</b></div>
@@ -138,7 +137,6 @@
     let timer = null;
     let route = [startingArticle];
 
-    // Hide reset button in multiplayer matches
     if (mode === 'multiplayer') {
       document.getElementById('btn-reset').classList.add('hidden');
       document.getElementById('hud-attempt-counter').classList.add('hidden');
@@ -167,7 +165,6 @@
       }, 1000);
     }
 
-    // --- RESET CURRENT RUN ---
     function resetRun() {
       const confirmPrompt = mode === 'daily'
         ? `Resetting will consume attempt #${currentAttempt + 1}. Runs past 3 attempts do not rank on the leaderboard. Proceed?`
@@ -237,7 +234,6 @@
       }
     }
 
-    // --- ANTI-CHEAT LISTENERS ---
     window.addEventListener('keydown', (e) => {
       if (banCtrlF && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
@@ -268,7 +264,6 @@
       }, true);
     }
 
-    // --- VICTORY ENGINE ---
     async function triggerVictory() {
       clearInterval(timer);
       document.getElementById('win-clicks').innerText = clicks;
