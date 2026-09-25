@@ -69,7 +69,7 @@
     </div>
   </header>
 
-  <!-- Main View -->
+  <!-- Main Content -->
   <main class="flex-1 max-w-5xl w-full mx-auto p-3.5 sm:p-8">
     <div class="border-b border-wiki-borderLight dark:border-wiki-borderDark pb-2 mb-4 sm:mb-6">
       <h1 class="text-xl sm:text-3xl font-serif font-normal">Game lobby</h1>
@@ -196,7 +196,7 @@
 
   <!-- ================= MODALS ================= -->
 
-  <!-- 1. AUTHENTICATION MODAL (LOG IN / REGISTER) -->
+  <!-- 1. AUTHENTICATION MODAL -->
   <div id="auth-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full max-h-[90dvh] overflow-y-auto shadow-2xl">
       <div class="flex border-b border-wiki-border text-xs font-semibold">
@@ -333,7 +333,6 @@
 
     function getToken() { return localStorage.getItem('wikisprint_token'); }
 
-    // --- Interactive Badge Tooltip Inspector ---
     function inspectBadge(name, icon, desc) {
       document.getElementById('badge-modal-icon').innerText = icon;
       document.getElementById('badge-modal-title').innerText = decodeURIComponent(name);
