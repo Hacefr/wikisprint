@@ -1,1 +1,421 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WikiSprint — The Wikipedia Race</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Socket.io Client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            wiki: {
+              blue: '#36c',
+              blueHover: '#447ff5',
+              blueActive: '#2a4b8d',
+              border: '#a2a9b1',
+              borderLight: '#c8ccd1',
+              bgLight: '#f8f9fa',
+              bgDark: '#101418',
+              surfaceDark: '#202122',
+              cardDark: '#272d33',
+              borderDark: '#54595d',
+              textPrimary: '#202122',
+              textSecondary: '#54595d',
+              textDarkPrimary: '#eaecf0',
+              textDarkSecondary: '#a2a9b1',
+            }
+          },
+          fontFamily: {
+            serif: ['Linux Libertine', 'Georgia', 'Times New Roman', 'serif'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Lato', 'Helvetica', 'Arial', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans bg-wiki-bgLight dark:bg-wiki-bgDark text-wiki-textPrimary dark:text-wiki-textDarkPrimary min-h-screen flex flex-col transition-colors duration-150">
 
+  <!-- Header -->
+  <header class="border-b border-wiki-borderLight dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark px-6 py-2.5 flex justify-between items-center text-sm">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <span class="font-serif text-2xl font-normal leading-none select-none">W</span>
+        <div>
+          <span class="font-serif text-lg tracking-wide font-normal">WikiSprint</span>
+          <span class="text-[11px] block text-wiki-textSecondary dark:text-wiki-textDarkSecondary leading-none">The Free Encyclopedia Race</span>
+        </div>
+      </div>
+      <nav class="hidden md:flex gap-4 text-xs ml-4 border-l border-wiki-borderLight dark:border-wiki-borderDark pl-4 text-wiki-blue dark:text-blue-400">
+        <a href="/" class="hover:underline">Main Page</a>
+        <button onclick="toggleLeaderboardModal()" class="hover:underline text-wiki-blue dark:text-blue-400">Daily Leaderboards</button>
+      </nav>
+    </div>
+
+    <!-- User Profile Bar -->
+    <div class="flex items-center gap-4 text-xs">
+      <div class="flex items-center gap-1.5 bg-wiki-bgLight dark:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-2 py-1 rounded-sm">
+        <span class="text-amber-500 font-bold">🔥</span>
+        <span id="header-streak" class="font-mono font-bold text-[11px]">7</span>
+        <span class="text-[10px] text-wiki-textSecondary dark:text-wiki-textDarkSecondary uppercase">Streak</span>
+      </div>
+
+      <button onclick="toggleProfileModal()" class="flex items-center gap-2 hover:bg-wiki-bgLight dark:hover:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-2.5 py-1 rounded-sm transition cursor-pointer">
+        <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+        <span id="header-username" class="font-medium text-wiki-blue dark:text-blue-400">User:Archivist_92</span>
+        <span id="header-level" class="bg-[#eaecf0] dark:bg-wiki-surfaceDark border border-wiki-borderLight dark:border-wiki-borderDark px-1 text-[10px] font-mono font-bold text-wiki-textSecondary dark:text-wiki-textDarkSecondary">
+          Lv. 18
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Menu -->
+  <main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8">
+    <div class="border-b border-wiki-borderLight dark:border-wiki-borderDark pb-2 mb-6">
+      <h1 class="text-2xl md:text-3xl font-serif font-normal">Game lobby</h1>
+      <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary mt-1">From WikiSprint, the encyclopedic speedrun competition</p>
+    </div>
+
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-borderLight dark:border-wiki-borderDark p-3.5 mb-6 text-xs flex gap-3 items-center">
+      <span class="font-bold text-wiki-textSecondary dark:text-wiki-textDarkSecondary uppercase text-[10px] tracking-wider border border-wiki-borderLight dark:border-wiki-borderDark px-1.5 py-0.5 bg-wiki-bgLight dark:bg-wiki-cardDark">Notice</span>
+      <span>Daily challenges reset at 00:00 UTC. Earn <b>+250 EXP</b> on daily clear and <b>+100 EXP</b> per multiplayer victory.</span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+      <!-- Left Column: Solo Play -->
+      <div class="space-y-6">
+        <!-- Daily Challenge -->
+        <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
+          <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
+            <span>Featured: Daily Challenge</span>
+            <span class="text-[11px] font-sans font-normal text-wiki-textSecondary dark:text-wiki-textDarkSecondary">UTC Day #142</span>
+          </div>
+
+          <div class="p-4 space-y-4">
+            <div class="flex items-center justify-between bg-wiki-bgLight dark:bg-wiki-cardDark border border-wiki-borderLight dark:border-wiki-borderDark px-3 py-2 text-xs">
+              <div class="flex items-center gap-1.5">
+                <span class="font-semibold">Attempts:</span>
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-wiki-blue"></span>
+                <span class="inline-block w-2.5 h-2.5 rounded-full border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark"></span>
+                <span class="inline-block w-2.5 h-2.5 rounded-full border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark"></span>
+                <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary text-[11px]">(1/3 used)</span>
+              </div>
+              <span class="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-0.5 border border-emerald-500/20">+250 EXP Reward</span>
+            </div>
+
+            <table class="w-full text-xs border border-wiki-borderLight dark:border-wiki-borderDark">
+              <tbody>
+                <tr class="border-b border-wiki-borderLight dark:border-wiki-borderDark">
+                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 w-20 text-wiki-textSecondary dark:text-wiki-textDarkSecondary border-r border-wiki-borderLight dark:border-wiki-borderDark">START</td>
+                  <td class="px-3 py-2 font-serif text-sm">The Great Barrier Reef</td>
+                </tr>
+                <tr>
+                  <td class="bg-wiki-bgLight dark:bg-wiki-cardDark font-bold px-3 py-2 text-wiki-textSecondary dark:text-wiki-textDarkSecondary border-r border-wiki-borderLight dark:border-wiki-borderDark">TARGET</td>
+                  <td class="px-3 py-2 font-serif text-sm">Quantum computing</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="flex flex-col sm:flex-row gap-2 pt-1">
+              <button onclick="playDaily()" class="flex-1 bg-wiki-blue hover:bg-wiki-blueHover active:bg-wiki-blueActive text-white text-xs font-semibold py-2.5 px-4 rounded-sm transition">
+                Start Daily Challenge
+              </button>
+              <button onclick="toggleLeaderboardModal()" class="flex items-center justify-center gap-1.5 bg-white dark:bg-wiki-cardDark hover:bg-wiki-bgLight dark:hover:bg-slate-800 border border-wiki-border dark:border-wiki-borderDark text-xs font-semibold py-2.5 px-4 rounded-sm transition cursor-pointer">
+                Daily Leaderboard
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Random Sprint -->
+        <div class="border border-wiki-borderLight dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark p-4">
+          <div class="flex justify-between items-center mb-1">
+            <h2 class="font-serif font-bold text-sm">Random Article Run</h2>
+            <span class="text-[10px] text-wiki-textSecondary dark:text-wiki-textDarkSecondary uppercase border border-wiki-borderLight dark:border-wiki-borderDark px-1.5 py-0.2 bg-wiki-bgLight dark:bg-wiki-cardDark">+50 EXP Practice</span>
+          </div>
+          <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary mb-3 leading-relaxed">
+            Generate unlimited random pairings for fast-paced practice.
+          </p>
+          <button onclick="playRandom()" class="w-full bg-white dark:bg-wiki-cardDark hover:bg-wiki-bgLight border border-wiki-border dark:border-wiki-borderDark text-xs font-semibold py-2 px-3 rounded-sm transition text-wiki-textPrimary dark:text-wiki-textDarkPrimary cursor-pointer">
+            Generate Random Match
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Column: Multiplayer -->
+      <div class="space-y-6">
+        <!-- Join Room -->
+        <div class="border border-wiki-borderLight dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark p-4">
+          <h2 class="font-serif font-bold text-sm mb-2">Connect to a room</h2>
+          <div class="flex gap-2">
+            <input id="input-room-code" type="text" placeholder="e.g. WIKI-4821" class="flex-1 bg-white dark:bg-wiki-cardDark border border-wiki-border dark:border-wiki-borderDark px-3 py-1.5 text-xs text-wiki-textPrimary dark:text-wiki-textDarkPrimary font-mono uppercase focus:outline-none focus:border-wiki-blue">
+            <button onclick="joinRoom()" class="bg-wiki-blue hover:bg-wiki-blueHover active:bg-wiki-blueActive text-white text-xs font-semibold px-4 py-1.5 rounded-sm transition cursor-pointer">
+              Join
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Lobby Creator -->
+        <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
+          <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
+            <span>Host Custom Room</span>
+            <span class="text-[11px] font-sans font-normal text-wiki-textSecondary dark:text-wiki-textDarkSecondary">+100 EXP Per Victory</span>
+          </div>
+
+          <div class="p-4 space-y-4">
+            <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary">Configure match enforcement rules:</p>
+
+            <div class="space-y-3.5 pt-1 border-t border-wiki-borderLight dark:border-wiki-borderDark">
+              <div class="flex items-center justify-between text-xs">
+                <div>
+                  <span class="font-bold block">Attempts allowed per racer</span>
+                  <span class="text-[11px] text-wiki-textSecondary dark:text-wiki-textDarkSecondary">Retries permitted this match</span>
+                </div>
+                <select id="select-attempts" class="bg-white dark:bg-wiki-cardDark border border-wiki-border dark:border-wiki-borderDark px-2 py-1 text-xs rounded-sm">
+                  <option value="1">1 attempt (Sudden death)</option>
+                  <option value="3" selected>3 attempts (Best of 3)</option>
+                  <option value="999">Unlimited</option>
+                </select>
+              </div>
+
+              <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                <input id="toggle-ctrl-f" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
+                <div>
+                  <span class="font-bold">Ban in-page search (Ctrl + F)</span>
+                  <p class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary text-[11px] mt-0.5">Blocks search keybindings inside the article.</p>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                <input id="toggle-tab-switch" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
+                <div>
+                  <span class="font-bold text-red-600 dark:text-red-400">Ban leaving tab or window</span>
+                  <p class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary text-[11px] mt-0.5">Forfeits the current attempt if window loses focus.</p>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                <input id="toggle-backtrack" type="checkbox" class="mt-0.5 rounded-sm accent-wiki-blue">
+                <div>
+                  <span class="font-bold">Allow history navigation (Back button)</span>
+                  <p class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary text-[11px] mt-0.5">Permits undoing navigation steps.</p>
+                </div>
+              </label>
+            </div>
+
+            <button onclick="createCustomRoom()" class="w-full bg-[#3366cc] hover:bg-wiki-blueHover active:bg-wiki-blueActive text-white text-xs font-semibold py-2.5 px-4 rounded-sm transition cursor-pointer">
+              Create Room and Invite Racers
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Player Profile Modal -->
+  <div id="profile-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark w-full max-w-md shadow-xl">
+      <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 flex justify-between items-center">
+        <h3 class="font-serif font-bold text-sm">User Profile: Archivist_92</h3>
+        <button onclick="toggleProfileModal()" class="font-mono text-base font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-wiki-borderLight dark:border-wiki-borderDark pb-3">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-wiki-textSecondary dark:text-wiki-textDarkSecondary">Current Rank</span>
+            <h4 class="font-serif text-lg font-bold text-wiki-blue dark:text-blue-400">Rollbacker (Tier III)</h4>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] uppercase font-bold text-wiki-textSecondary dark:text-wiki-textDarkSecondary">Level</span>
+            <p class="font-mono text-xl font-black">18</p>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex justify-between text-xs font-mono">
+            <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary">EXP Progress</span>
+            <span class="font-bold">2,450 / 3,000 XP</span>
+          </div>
+          <div class="w-full bg-wiki-bgLight dark:bg-wiki-cardDark h-2 border border-wiki-borderLight dark:border-wiki-borderDark">
+            <div class="bg-wiki-blue h-full" style="width: 81%"></div>
+          </div>
+        </div>
+
+        <table class="w-full text-xs border border-wiki-borderLight dark:border-wiki-borderDark">
+          <tbody>
+            <tr class="border-b border-wiki-borderLight dark:border-wiki-borderDark">
+              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold w-1/2 border-r border-wiki-borderLight dark:border-wiki-borderDark">Total Multiplayer Wins</td>
+              <td class="px-3 py-2 font-mono font-bold text-sm">48</td>
+            </tr>
+            <tr class="border-b border-wiki-borderLight dark:border-wiki-borderDark">
+              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold border-r border-wiki-borderLight dark:border-wiki-borderDark">Current Daily Streak</td>
+              <td class="px-3 py-2 font-mono font-bold text-sm text-amber-600 dark:text-amber-400">7 Days 🔥</td>
+            </tr>
+            <tr>
+              <td class="bg-wiki-bgLight dark:bg-wiki-cardDark px-3 py-2 font-bold border-r border-wiki-borderLight dark:border-wiki-borderDark">Total Matches Completed</td>
+              <td class="px-3 py-2 font-mono font-semibold">142</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="border-t border-wiki-borderLight dark:border-wiki-borderDark p-3 bg-wiki-bgLight dark:bg-wiki-cardDark flex justify-end">
+        <button onclick="toggleProfileModal()" class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark text-xs font-semibold px-4 py-1.5 rounded-sm">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily Leaderboard Modal -->
+  <div id="leaderboard-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark w-full max-w-2xl shadow-xl">
+      <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2.5 flex justify-between items-center">
+        <h3 class="font-serif font-bold text-sm">Leaderboard: Daily Challenge #142</h3>
+        <button onclick="toggleLeaderboardModal()" class="font-mono text-base font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <div class="overflow-x-auto border border-wiki-borderLight dark:border-wiki-borderDark">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-wiki-bgLight dark:bg-wiki-cardDark border-b border-wiki-borderLight dark:border-wiki-borderDark font-bold text-wiki-textSecondary dark:text-wiki-textDarkSecondary">
+              <tr>
+                <th class="p-2 border-r border-wiki-borderLight dark:border-wiki-borderDark w-12 text-center">Rank</th>
+                <th class="p-2 border-r border-wiki-borderLight dark:border-wiki-borderDark">Racer</th>
+                <th class="p-2 border-r border-wiki-borderLight dark:border-wiki-borderDark w-16 text-center">Attempt</th>
+                <th class="p-2 border-r border-wiki-borderLight dark:border-wiki-borderDark w-16 text-center">Clicks</th>
+                <th class="p-2 border-r border-wiki-borderLight dark:border-wiki-borderDark w-20 text-center">Time</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-wiki-borderLight dark:divide-wiki-borderDark">
+              <tr>
+                <td class="p-2 font-bold text-center">1</td>
+                <td class="p-2 font-medium text-wiki-blue dark:text-blue-400">speedy_librarian</td>
+                <td class="p-2 text-center font-mono font-bold text-emerald-600">#1</td>
+                <td class="p-2 text-center font-mono">4</td>
+                <td class="p-2 text-center font-mono">0:24.12</td>
+              </tr>
+              <tr>
+                <td class="p-2 font-bold text-center">2</td>
+                <td class="p-2 font-medium text-wiki-blue dark:text-blue-400">wikisurf_99</td>
+                <td class="p-2 text-center font-mono font-bold text-emerald-600">#1</td>
+                <td class="p-2 text-center font-mono">4</td>
+                <td class="p-2 text-center font-mono">0:28.45</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="border-t border-wiki-borderLight dark:border-wiki-borderDark p-3 bg-wiki-bgLight dark:bg-wiki-cardDark flex justify-end">
+        <button onclick="toggleLeaderboardModal()" class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark text-xs font-semibold px-4 py-1.5 rounded-sm">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-wiki-borderLight dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark mt-12 py-6 px-6 text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div>
+        <p>Text is available under <a href="https://creativecommons.org/licenses/by-sa/4.0/" class="text-wiki-blue dark:text-blue-400 hover:underline">CC BY-SA 4.0</a>.</p>
+        <p class="mt-0.5">Independent speedrun platform. Not affiliated with Wikimedia Foundation.</p>
+      </div>
+
+      <div class="flex items-center gap-2 border border-wiki-borderLight dark:border-wiki-borderDark p-1 rounded-sm bg-wiki-bgLight dark:bg-wiki-cardDark">
+        <span class="text-[11px] px-2 font-medium">Appearance:</span>
+        <button onclick="setTheme('light')" id="btn-light" class="px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-white shadow-sm border border-wiki-borderLight text-wiki-textPrimary">Light</button>
+        <button onclick="setTheme('dark')" id="btn-dark" class="px-2 py-0.5 rounded-sm text-[11px] font-normal">Dark</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Initialize Socket
+    const socket = io();
+
+    function toggleLeaderboardModal() {
+      document.getElementById('leaderboard-modal').classList.toggle('hidden');
+    }
+
+    function toggleProfileModal() {
+      document.getElementById('profile-modal').classList.toggle('hidden');
+    }
+
+    function playDaily() {
+      window.location.href = `/game.html?mode=daily&start=The_Great_Barrier_Reef&target=Quantum_computing`;
+    }
+
+    async function playRandom() {
+      // Fetch 2 random pages via Wikimedia API
+      try {
+        const res = await fetch('https://en.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=2&format=json&origin=*');
+        const data = await res.json();
+        const start = encodeURIComponent(data.query.random[0].title);
+        const target = encodeURIComponent(data.query.random[1].title);
+        window.location.href = `/game.html?mode=random&start=${start}&target=${target}`;
+      } catch (e) {
+        alert("Failed to pick random pages. Try again.");
+      }
+    }
+
+    function createCustomRoom() {
+      const rules = {
+        maxAttempts: parseInt(document.getElementById('select-attempts').value, 10),
+        banCtrlF: document.getElementById('toggle-ctrl-f').checked,
+        banTabSwitch: document.getElementById('toggle-tab-switch').checked,
+        allowBacktrack: document.getElementById('toggle-backtrack').checked
+      };
+
+      socket.emit('create_room', {
+        username: "Archivist_92",
+        rules: rules,
+        startPage: "The Great Barrier Reef",
+        targetPage: "Quantum computing"
+      });
+    }
+
+    function joinRoom() {
+      const code = document.getElementById('input-room-code').value.trim();
+      if (!code) return alert("Please enter a room code");
+      window.location.href = `/game.html?mode=multiplayer&room=${encodeURIComponent(code)}`;
+    }
+
+    socket.on('room_created', ({ roomId }) => {
+      window.location.href = `/game.html?mode=multiplayer&room=${roomId}&host=true`;
+    });
+
+    socket.on('error_message', (msg) => alert(msg));
+
+    // Theme Switcher
+    function setTheme(mode) {
+      const html = document.documentElement;
+      const lightBtn = document.getElementById('btn-light');
+      const darkBtn = document.getElementById('btn-dark');
+
+      if (mode === 'dark') {
+        html.classList.add('dark');
+        localStorage.setItem('wiki_theme', 'dark');
+        darkBtn.className = "px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-wiki-surfaceDark border border-wiki-borderDark text-white shadow-sm";
+        lightBtn.className = "px-2 py-0.5 rounded-sm text-[11px] font-normal text-wiki-textDarkSecondary hover:text-white";
+      } else {
+        html.classList.remove('dark');
+        localStorage.setItem('wiki_theme', 'light');
+        lightBtn.className = "px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-white shadow-sm border border-wiki-borderLight text-wiki-textPrimary";
+        darkBtn.className = "px-2 py-0.5 rounded-sm text-[11px] font-normal text-wiki-textSecondary hover:text-black";
+      }
+    }
+
+    (function initTheme() {
+      const stored = localStorage.getItem('wiki_theme');
+      if (stored) setTheme(stored);
+      else if (window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme('dark');
+    })();
+  </script>
+</body>
+</html>
