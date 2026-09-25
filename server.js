@@ -10,7 +10,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. DETERMINISTIC DAILY CHALLENGE ENGINE ---
+// 1. DETERMINISTIC DAILY CHALLENGE ENGINE
 const CURATED_PAIRS = [
   { start: "The_Great_Barrier_Reef", target: "Quantum_computing" },
   { start: "Renaissance", target: "Artificial_intelligence" },
@@ -28,7 +28,6 @@ function getDailyChallenge() {
   return { day: dayOfYear, ...pair };
 }
 
-// Global in-memory daily leaderboard
 let dailyLeaderboard = [];
 
 app.get('/api/daily', (req, res) => {
@@ -36,13 +35,19 @@ app.get('/api/daily', (req, res) => {
 });
 
 app.get('/api/daily-leaderboard', (req, res) => {
-  res.json({ leaderboard: dailyLeaderboard.sort((a, b) => a.clicks - b.clicks || a.timeSeconds - b.timeSeconds).slice(0, 50) });
+  res.json({
+    leaderboard: dailyLeaderboard
+      .sort((a, b) => a.clicks - b.clicks || a.timeSeconds - b.timeSeconds)
+      .slice(0, 50)
+  });
 });
 
 app.post('/api/daily-submit', (req, res) => {
   const { username, clicks, timeSeconds, attempt, route } = req.body;
-  if (!username || !clicks || !timeSeconds) return res.status(400).json({ error: "Invalid data" });
-  
+  if (!username || clicks === undefined || timeSeconds === undefined) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+
   dailyLeaderboard.push({
     username,
     clicks,
@@ -54,11 +59,11 @@ app.post('/api/daily-submit', (req, res) => {
   res.json({ success: true });
 });
 
-// --- 2. MULTIPLAYER ROOM & SYNC ENGINE ---
+// 2. MULTIPLAYER ROOM & WIN-CONDITION ENGINE
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  // Create Room
+  // Host creates room with customizable win rules
   socket.on('create_room', ({ username, rules, startPage, targetPage }) => {
     const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
     const daily = getDailyChallenge();
@@ -66,14 +71,15 @@ io.on('connection', (socket) => {
     const room = {
       id: roomId,
       hostId: socket.id,
-      status: 'LOBBY', // LOBBY, RACING, FINISHED
+      status: 'LOBBY',
       startPage: startPage || daily.start,
       targetPage: targetPage || daily.target,
       rules: {
-        maxAttempts: rules?.maxAttempts || 3,
+        winCondition: rules?.winCondition || 'BOTH', // 'BOTH' | 'TIME' | 'STEPS'
+        banNewTabs: rules?.banNewTabs ?? true,
         banCtrlF: rules?.banCtrlF ?? true,
         banTabSwitch: rules?.banTabSwitch ?? true,
-        allowBacktrack: rules?.allowBacktrack ?? false
+        maxAttempts: rules?.maxAttempts || 3
       },
       players: new Map()
     };
@@ -86,7 +92,7 @@ io.on('connection', (socket) => {
       currentPage: room.startPage,
       isFinished: false,
       isDisqualified: false,
-      finishTime: null
+      finishTimeSeconds: null
     });
 
     rooms.set(roomId, room);
@@ -100,7 +106,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(cleanId);
 
     if (!room) return socket.emit('error_message', "Room does not exist.");
-    if (room.status !== 'LOBBY') return socket.emit('error_message', "Match already started.");
+    if (room.status !== 'LOBBY') return socket.emit('error_message', "Match is already in progress.");
 
     room.players.set(socket.id, {
       id: socket.id,
@@ -110,7 +116,7 @@ io.on('connection', (socket) => {
       currentPage: room.startPage,
       isFinished: false,
       isDisqualified: false,
-      finishTime: null
+      finishTimeSeconds: null
     });
 
     socket.join(cleanId);
@@ -118,7 +124,7 @@ io.on('connection', (socket) => {
     io.to(cleanId).emit('room_updated', serializeRoom(room));
   });
 
-  // Host starts game
+  // Host starts the race
   socket.on('start_race', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room || room.hostId !== socket.id) return;
@@ -130,8 +136,8 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Player navigates in real-time
-  socket.on('player_navigated', ({ roomId, newPage }) => {
+  // Live Navigation & Target Reached
+  socket.on('player_navigated', ({ roomId, newPage, timeSeconds }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== 'RACING') return;
     const player = room.players.get(socket.id);
@@ -140,25 +146,53 @@ io.on('connection', (socket) => {
     player.currentPage = newPage;
     player.currentClicks += 1;
 
-    // Check Win
-    if (newPage.toLowerCase().replace(/_/g, ' ') === room.targetPage.toLowerCase().replace(/_/g, ' ')) {
+    // Check Win Condition
+    const isTarget = newPage.toLowerCase().replace(/_/g, ' ') === room.targetPage.toLowerCase().replace(/_/g, ' ');
+
+    if (isTarget) {
       player.isFinished = true;
-      player.finishTime = Date.now();
-      io.to(roomId).emit('player_won', {
-        username: player.username,
-        clicks: player.currentClicks
+      player.finishTimeSeconds = timeSeconds || 0;
+
+      // Calculate final match rankings based on selected rule
+      const finished = Array.from(room.players.values()).filter(p => p.isFinished);
+
+      finished.sort((a, b) => {
+        if (room.rules.winCondition === 'TIME') {
+          return a.finishTimeSeconds - b.finishTimeSeconds;
+        } else if (room.rules.winCondition === 'STEPS') {
+          return a.currentClicks - b.currentClicks;
+        } else {
+          // BOTH: Lowest Steps first; Lowest Time tiebreaker
+          if (a.currentClicks !== b.currentClicks) {
+            return a.currentClicks - b.currentClicks;
+          }
+          return a.finishTimeSeconds - b.finishTimeSeconds;
+        }
+      });
+
+      io.to(roomId).emit('player_finished_run', {
+        winnerName: finished[0].username,
+        finisher: player.username,
+        clicks: player.currentClicks,
+        timeSeconds: player.finishTimeSeconds,
+        winCondition: room.rules.winCondition,
+        standings: finished.map(p => ({
+          username: p.username,
+          clicks: p.currentClicks,
+          timeSeconds: p.finishTimeSeconds
+        }))
       });
     }
 
+    // Broadcast position to opponent HUDs
     io.to(roomId).emit('race_progress', {
-      playerId: socket.id,
       username: player.username,
       clicks: player.currentClicks,
       currentPage: player.currentPage
     });
   });
 
-  // Rule violation: Tab switch
+  // Tab switch violation
   socket.on('violation_tab_switch', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room || !room.rules.banTabSwitch || room.status !== 'RACING') return;
@@ -168,7 +202,7 @@ io.on('connection', (socket) => {
     player.isDisqualified = true;
     io.to(roomId).emit('player_disqualified', {
       username: player.username,
-      reason: "Tab minimized / focus lost"
+      reason: "Tab minimized / window lost focus"
     });
   });
 
@@ -204,4 +238,4 @@ function serializeRoom(room) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`WikiSprint live on port ${PORT}`));
+server.listen(PORT, () => console.log(`WikiSprint live at http://localhost:${PORT}`));
