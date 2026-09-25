@@ -1,5 +1,5 @@
 {
-  "name": "wikisprint-backend",
+  "name": "wikisprint",
   "version": "1.0.0",
   "description": "Multiplayer Wikipedia Racing Game",
   "main": "server.js",
