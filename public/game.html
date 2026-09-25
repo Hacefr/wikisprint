@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WikiSprint — Racing...</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            wiki: {
+              blue: '#36c',
+              border: '#a2a9b1',
+              borderLight: '#c8ccd1',
+              bgLight: '#f8f9fa',
+              bgDark: '#101418',
+              surfaceDark: '#202122',
+              cardDark: '#272d33',
+              borderDark: '#54595d',
+              textPrimary: '#202122',
+              textSecondary: '#54595d',
+              textDarkPrimary: '#eaecf0',
+              textDarkSecondary: '#a2a9b1',
+            }
+          },
+          fontFamily: {
+            serif: ['Linux Libertine', 'Georgia', 'Times New Roman', 'serif'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Wikipedia content styling resets */
+    #wiki-content a { color: #36c; text-decoration: none; cursor: pointer; }
+    #wiki-content a:hover { text-decoration: underline; }
+    #wiki-content p { margin-bottom: 0.8rem; line-height: 1.6; }
+    #wiki-content h2 { font-family: 'Linux Libertine', Georgia, serif; font-size: 1.4rem; border-bottom: 1px solid #c8ccd1; margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: normal; }
+    #wiki-content h3 { font-family: 'Linux Libertine', Georgia, serif; font-size: 1.15rem; margin-top: 1.2rem; margin-bottom: 0.4rem; }
+    #wiki-content ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.8rem; }
+    #wiki-content table { border: 1px solid #a2a9b1; margin-bottom: 1rem; font-size: 0.85rem; }
+    #wiki-content th, #wiki-content td { border: 1px solid #c8ccd1; padding: 0.3rem 0.6rem; }
+    .dark #wiki-content a { color: #6b9eff; }
+    .dark #wiki-content h2, .dark #wiki-content th, .dark #wiki-content td { border-color: #54595d; }
+  </style>
+</head>
+<body class="font-sans bg-wiki-bgLight dark:bg-wiki-bgDark text-wiki-textPrimary dark:text-wiki-textDarkPrimary min-h-screen flex flex-col select-none">
+
+  <!-- HUD BAR (Fixed at Top) -->
+  <header class="sticky top-0 z-40 bg-white dark:bg-wiki-surfaceDark border-b border-wiki-border dark:border-wiki-borderDark shadow-sm px-4 py-2 flex flex-wrap items-center justify-between gap-4 text-xs">
+    
+    <!-- Target Mission Display -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 font-bold">
+        <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary uppercase text-[10px]">Goal:</span>
+        <span id="hud-target-title" class="font-serif text-sm text-wiki-blue dark:text-blue-400">Loading...</span>
+      </div>
+      <button id="btn-back" onclick="navigateBack()" class="hidden border border-wiki-border dark:border-wiki-borderDark px-2 py-0.5 rounded-sm hover:bg-wiki-bgLight">
+        &larr; Back
+      </button>
+    </div>
+
+    <!-- Live Race Counters -->
+    <div class="flex items-center gap-6 font-mono text-xs">
+      <div>
+        <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary font-sans">Clicks:</span>
+        <span id="hud-clicks" class="font-bold text-sm ml-1">0</span>
+      </div>
+      <div>
+        <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary font-sans">Time:</span>
+        <span id="hud-timer" class="font-bold text-sm ml-1">00:00</span>
+      </div>
+      <div id="hud-attempts-box">
+        <span class="text-wiki-textSecondary dark:text-wiki-textDarkSecondary font-sans">Attempt:</span>
+        <span id="hud-attempt" class="font-bold text-sm ml-1">1/3</span>
+      </div>
+    </div>
+
+    <!-- Opponents Ticker (Multiplayer) -->
+    <div id="hud-opponents" class="hidden flex items-center gap-3 text-[11px] font-mono border-l border-wiki-borderLight pl-3">
+      <span class="text-wiki-textSecondary">Opponents:</span>
+      <div id="opponents-list" class="flex gap-2"></div>
+    </div>
+  </header>
+
+  <!-- Wikipedia Article Container -->
+  <main class="flex-1 max-w-4xl w-full mx-auto p-6 md:p-10 bg-white dark:bg-wiki-surfaceDark border-x border-wiki-borderLight dark:border-wiki-borderDark my-4">
+    <h1 id="article-title" class="font-serif text-3xl font-normal border-b border-wiki-borderLight dark:border-wiki-borderDark pb-2 mb-4">
+      Loading Article...
+    </h1>
+    
+    <div id="wiki-content" class="text-sm leading-relaxed">
+      <!-- Article HTML injected here -->
+    </div>
+  </main>
+
+  <!-- VICTORY MODAL -->
+  <div id="win-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border dark:border-wiki-borderDark max-w-md w-full p-6 text-center shadow-2xl">
+      <span class="text-4xl block mb-2">🏆</span>
+      <h2 class="font-serif text-2xl font-bold mb-1">Target Reached!</h2>
+      <p class="text-xs text-wiki-textSecondary dark:text-wiki-textDarkSecondary mb-4">You successfully navigated human knowledge.</p>
+
+      <div class="grid grid-cols-2 gap-2 text-xs border border-wiki-borderLight dark:border-wiki-borderDark p-3 mb-4 font-mono">
+        <div class="border-r border-wiki-borderLight dark:border-wiki-borderDark">
+          <span class="text-wiki-textSecondary block text-[10px]">TOTAL CLICKS</span>
+          <span id="win-clicks" class="text-lg font-bold">0</span>
+        </div>
+        <div>
+          <span class="text-wiki-textSecondary block text-[10px]">TIME TAKEN</span>
+          <span id="win-time" class="text-lg font-bold">00:00</span>
+        </div>
+      </div>
+
+      <div id="win-exp-banner" class="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold py-1.5 mb-4">
+        +250 EXP Earned!
+      </div>
+
+      <button onclick="window.location.href='/'" class="w-full bg-wiki-blue hover:bg-wiki-blueHover text-white text-xs font-semibold py-2.5 rounded-sm">
+        Return to Lobby
+      </button>
+    </div>
+  </div>
+
+  <!-- VIOLATION WARNING TOAST -->
+  <div id="toast-warning" class="fixed bottom-6 right-6 bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-sm shadow-xl hidden">
+    Warning: Leaving window / Ctrl+F is forbidden!
+  </div>
+
+  <script>
+    const socket = io();
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = urlParams.get('mode') || 'daily';
+    let currentArticle = urlParams.get('start') || 'The_Great_Barrier_Reef';
+    const targetArticle = urlParams.get('target') || 'Quantum_computing';
+    const roomId = urlParams.get('room');
+
+    let clicks = 0;
+    let secondsElapsed = 0;
+    let timerInterval = null;
+    let historyStack = [];
+    let allowBacktrack = false;
+    let banCtrlF = true;
+    let banTabSwitch = true;
+    let attemptsUsed = 1;
+    let maxAttempts = 3;
+
+    // Apply Theme
+    if (localStorage.getItem('wiki_theme') === 'dark') document.documentElement.classList.add('dark');
+
+    // 1. Initialize Game
+    document.getElementById('hud-target-title').innerText = decodeURIComponent(targetArticle).replace(/_/g, ' ');
+
+    function startTimer() {
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+        const secs = String(secondsElapsed % 60).padStart(2, '0');
+        document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    // 2. Fetch & Render Wikipedia Article
+    async function loadArticle(title) {
+      document.getElementById('article-title').innerText = decodeURIComponent(title).replace(/_/g, ' ');
+      const contentDiv = document.getElementById('wiki-content');
+      contentDiv.innerHTML = "<p class='italic text-wiki-textSecondary'>Fetching from Wikipedia...</p>";
+
+      try {
+        const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(title)}`);
+        const html = await res.text();
+
+        // Sanitize & Parse
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        // Rewrite internal links
+        doc.querySelectorAll('a').forEach(anchor => {
+          const href = anchor.getAttribute('href');
+          if (href && href.startsWith('./') && !href.includes(':')) {
+            const cleanTarget = href.replace('./', '');
+            anchor.removeAttribute('href');
+            anchor.setAttribute('onclick', `handleLinkClick('${cleanTarget}')`);
+          } else {
+            // Disable non-internal links
+            anchor.removeAttribute('href');
+            anchor.classList.add('text-slate-400', 'cursor-not-allowed');
+          }
+        });
+
+        contentDiv.innerHTML = doc.body.innerHTML;
+        window.scrollTo(0, 0);
+
+        // Check Victory
+        if (title.toLowerCase() === targetArticle.toLowerCase()) {
+          handleVictory();
+        }
+      } catch (err) {
+        contentDiv.innerHTML = "<p class='text-red-500'>Failed to load Wikipedia article.</p>";
+      }
+    }
+
+    // 3. Navigation Handling
+    function handleLinkClick(nextTitle) {
+      clicks++;
+      document.getElementById('hud-clicks').innerText = clicks;
+      historyStack.push(currentArticle);
+      if (allowBacktrack) document.getElementById('btn-back').classList.remove('hidden');
+
+      currentArticle = nextTitle;
+      loadArticle(nextTitle);
+
+      // Notify multiplayer room if active
+      if (roomId) {
+        socket.emit('player_navigated', { roomId, newPage: nextTitle });
+      }
+    }
+
+    function navigateBack() {
+      if (historyStack.length > 0) {
+        currentArticle = historyStack.pop();
+        loadArticle(currentArticle);
+        if (historyStack.length === 0) document.getElementById('btn-back').classList.add('hidden');
+      }
+    }
+
+    // 4. Rule Enforcement: Ctrl+F & Tab-Switching
+    window.addEventListener('keydown', (e) => {
+      if (banCtrlF && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        showToast("Ctrl+F search is prohibited in this mode!");
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && banTabSwitch) {
+        showToast("Tab switch detected! Attempt lost.");
+        if (roomId) socket.emit('violation_tab_switch', { roomId });
+      }
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast-warning');
+      toast.innerText = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3500);
+    }
+
+    // 5. Win Screen Trigger
+    function handleVictory() {
+      clearInterval(timerInterval);
+      document.getElementById('win-clicks').innerText = clicks;
+      document.getElementById('win-time').innerText = document.getElementById('hud-timer').innerText;
+      document.getElementById('win-modal').classList.remove('hidden');
+    }
+
+    // 6. Multiplayer Room Hooks
+    if (roomId) {
+      document.getElementById('hud-opponents').classList.remove('hidden');
+      socket.emit('join_room', { roomId, username: 'Archivist_92' });
+
+      socket.on('race_progress', (data) => {
+        // Update opponents ticker
+        const container = document.getElementById('opponents-list');
+        container.innerHTML = `<span class="bg-wiki-bgLight dark:bg-wiki-cardDark border border-wiki-border px-1.5 py-0.5 rounded">${data.playerId.substring(0, 4)}: ${data.clicks} clicks</span>`;
+      });
+    }
+
+    // Boot
+    startTimer();
+    loadArticle(currentArticle);
+  </script>
+</body>
+</html>
