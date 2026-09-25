@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    /* Embedded Wikipedia article presentation */
     #wiki-body a { color: #3366cc; text-decoration: none; cursor: pointer; }
     #wiki-body a:hover { text-decoration: underline; }
     #wiki-body a.disabled-link { color: inherit !important; text-decoration: none !important; cursor: default !important; }
@@ -39,7 +38,6 @@
       <div>TIME: <span id="hud-timer" class="font-bold text-sm">00:00</span></div>
     </div>
 
-    <!-- Multiplayer Ticker -->
     <div id="hud-opponents" class="hidden flex items-center gap-2 font-mono text-[11px]">
       <span class="text-[#54595d]">Live:</span>
       <div id="opponents-ticker" class="flex gap-2"></div>
@@ -64,7 +62,6 @@
         <div>TIME: <b id="win-time">00:00</b></div>
       </div>
 
-      <!-- Standings table for multiplayer -->
       <div id="multiplayer-standings" class="hidden mb-4 border border-[#c8ccd1] text-xs">
         <div class="bg-[#eaecf0] px-3 py-1 font-bold text-left border-b border-[#c8ccd1]">Match Standings</div>
         <div id="standings-rows" class="p-2 space-y-1 font-mono text-left"></div>
@@ -87,7 +84,6 @@
     let currentArticle = params.get('start') || 'The_Great_Barrier_Reef';
     const targetArticle = params.get('target') || 'Quantum_computing';
     const roomId = params.get('room');
-    const attempt = parseInt(params.get('attempt') || '1', 10);
 
     const winCondition = params.get('winCondition') || 'BOTH';
     const banNewTabs = params.get('newTabs') !== 'false';
@@ -99,7 +95,6 @@
     let timer = null;
     let route = [currentArticle];
 
-    // Initialize HUD labels
     document.getElementById('hud-target').innerText = decodeURIComponent(targetArticle).replace(/_/g, ' ');
     document.getElementById('hud-rule-badge').innerText = 
       winCondition === 'TIME' ? 'Fastest Time' : 
@@ -114,7 +109,6 @@
       }, 1000);
     }
 
-    // SANITIZER & EMBEDDED WIKIPEDIA LOADER
     async function fetchArticle(title) {
       document.getElementById('article-header').innerText = decodeURIComponent(title).replace(/_/g, ' ');
       const container = document.getElementById('wiki-body');
@@ -127,19 +121,15 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        // Clean out Wikipedia headers, citations, edit sections, and reference tags
         doc.querySelectorAll('.mw-ref, .reference, .noprint, style, script, link').forEach(el => el.remove());
 
-        // Rewrite internal links; completely disable external links
         doc.querySelectorAll('a').forEach(anchor => {
           const href = anchor.getAttribute('href');
-          
           if (href && href.startsWith('./') && !href.includes(':')) {
             const cleanArticle = href.replace('./', '');
             anchor.removeAttribute('href');
             anchor.setAttribute('onclick', `navigate('${cleanArticle}')`);
           } else {
-            // Strip external URLs or special pages
             anchor.removeAttribute('href');
             anchor.classList.add('disabled-link');
           }
@@ -148,7 +138,6 @@
         container.innerHTML = doc.body.innerHTML;
         window.scrollTo(0, 0);
 
-        // Target reached check
         if (title.toLowerCase().replace(/_/g, ' ') === targetArticle.toLowerCase().replace(/_/g, ' ')) {
           triggerVictory();
         }
@@ -186,7 +175,7 @@
       }
     });
 
-    // RULE ENFORCEMENT: BAN NEW TABS (Middle-click, Ctrl-click, Context menu)
+    // RULE ENFORCEMENT: BAN NEW TABS
     if (banNewTabs) {
       const container = document.getElementById('wiki-body');
       
@@ -211,49 +200,48 @@
       });
     }
 
-    // VICTORY LOGIC
+    // AUTHENTICATED SCORE SUBMISSION
     async function triggerVictory() {
       clearInterval(timer);
       document.getElementById('win-clicks').innerText = clicks;
       document.getElementById('win-time').innerText = document.getElementById('hud-timer').innerText;
       document.getElementById('win-modal').classList.remove('hidden');
 
-      const rawUser = localStorage.getItem('wikisprint_user');
-      if (rawUser) {
-        const user = JSON.parse(rawUser);
-        const expGained = mode === 'daily' ? 250 : mode === 'multiplayer' ? 100 : 50;
-        user.exp += expGained;
-        
-        if (mode === 'daily') user.streak += 1;
-        if (mode === 'multiplayer') user.wins += 1;
+      const token = localStorage.getItem('wikisprint_token');
+      if (!token) return;
 
-        if (user.exp >= user.level * 500) {
-          user.exp -= user.level * 500;
-          user.level += 1;
-        }
-        localStorage.setItem('wikisprint_user', JSON.stringify(user));
-
-        if (mode === 'daily') {
-          await fetch('/api/daily-submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              username: user.username,
-              clicks,
-              timeSeconds: secondsElapsed,
-              attempt,
-              route
-            })
-          });
-        }
+      if (mode === 'daily') {
+        await fetch('/api/daily-submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          },
+          body: JSON.stringify({
+            clicks,
+            timeSeconds: secondsElapsed,
+            route
+          })
+        });
+      } else {
+        await fetch('/api/match-finish', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token
+          },
+          body: JSON.stringify({
+            won: true,
+            exp: mode === 'multiplayer' ? 100 : 50
+          })
+        });
       }
     }
 
-    // MULTIPLAYER SOCKET SYNC
     if (roomId) {
       document.getElementById('hud-opponents').classList.remove('hidden');
-      const user = JSON.parse(localStorage.getItem('wikisprint_user') || '{"username":"Guest"}');
-      socket.emit('join_room', { roomId, username: user.username });
+      const token = localStorage.getItem('wikisprint_token');
+      socket.emit('join_room', { roomId, token });
 
       socket.on('race_progress', (data) => {
         const ticker = document.getElementById('opponents-ticker');
