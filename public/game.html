@@ -7,9 +7,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    /* Clean Wikipedia-like article rendering */
+    /* Embedded Wikipedia article presentation */
     #wiki-body a { color: #3366cc; text-decoration: none; cursor: pointer; }
     #wiki-body a:hover { text-decoration: underline; }
+    #wiki-body a.disabled-link { color: inherit !important; text-decoration: none !important; cursor: default !important; }
     #wiki-body p { margin-bottom: 0.85rem; line-height: 1.6; }
     #wiki-body h2 { font-family: Georgia, serif; font-size: 1.4rem; border-bottom: 1px solid #c8ccd1; margin-top: 1.5rem; margin-bottom: 0.5rem; }
     #wiki-body h3 { font-family: Georgia, serif; font-size: 1.15rem; margin-top: 1.2rem; margin-bottom: 0.4rem; }
@@ -22,9 +23,15 @@
 
   <!-- HUD Bar -->
   <header class="sticky top-0 z-40 bg-white border-b border-[#a2a9b1] px-4 py-2 flex items-center justify-between text-xs shadow-sm">
-    <div class="flex items-center gap-2">
-      <span class="font-bold text-[#54595d] uppercase text-[10px]">GOAL:</span>
-      <span id="hud-target" class="font-serif text-sm font-bold text-[#3366cc]"></span>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5">
+        <span class="font-bold text-[#54595d] uppercase text-[10px]">GOAL:</span>
+        <span id="hud-target" class="font-serif text-sm font-bold text-[#3366cc]"></span>
+      </div>
+      <div class="border-l border-[#c8ccd1] pl-3 flex items-center gap-1 text-[11px] text-[#54595d]">
+        <span>RULE:</span>
+        <span id="hud-rule-badge" class="font-bold text-[#202122]"></span>
+      </div>
     </div>
 
     <div class="flex items-center gap-6 font-mono text-xs">
@@ -32,36 +39,42 @@
       <div>TIME: <span id="hud-timer" class="font-bold text-sm">00:00</span></div>
     </div>
 
-    <!-- Multiplayer Opponent Progress -->
+    <!-- Multiplayer Ticker -->
     <div id="hud-opponents" class="hidden flex items-center gap-2 font-mono text-[11px]">
-      <span class="text-[#54595d]">Racers:</span>
+      <span class="text-[#54595d]">Live:</span>
       <div id="opponents-ticker" class="flex gap-2"></div>
     </div>
   </header>
 
-  <!-- Wikipedia Reader Body -->
+  <!-- Embedded Article Frame -->
   <main class="flex-1 max-w-4xl w-full mx-auto p-6 md:p-10 bg-white border-x border-[#c8ccd1] my-4">
-    <h1 id="article-header" class="font-serif text-3xl pb-2 border-b border-[#c8ccd1] mb-4">Loading article...</h1>
+    <h1 id="article-header" class="font-serif text-3xl pb-2 border-b border-[#c8ccd1] mb-4">Accessing encyclopedia...</h1>
     <div id="wiki-body" class="text-sm"></div>
   </main>
 
-  <!-- VICTORY MODAL -->
+  <!-- Victory / Podium Modal -->
   <div id="win-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white border border-[#a2a9b1] max-w-sm w-full p-6 text-center shadow-2xl">
+    <div class="bg-white border border-[#a2a9b1] max-w-md w-full p-6 text-center shadow-2xl">
       <span class="text-4xl block mb-2">🏆</span>
-      <h2 class="font-serif text-2xl font-bold mb-1">Target Reached!</h2>
-      <p class="text-xs text-[#54595d] mb-4">You navigated to the destination article.</p>
+      <h2 id="win-title" class="font-serif text-2xl font-bold mb-1">Target Reached!</h2>
+      <p id="win-subtitle" class="text-xs text-[#54595d] mb-4">Navigated successfully to destination article.</p>
 
       <div class="grid grid-cols-2 gap-2 text-xs border border-[#c8ccd1] p-3 mb-4 font-mono">
         <div>CLICKS: <b id="win-clicks">0</b></div>
         <div>TIME: <b id="win-time">00:00</b></div>
       </div>
 
+      <!-- Standings table for multiplayer -->
+      <div id="multiplayer-standings" class="hidden mb-4 border border-[#c8ccd1] text-xs">
+        <div class="bg-[#eaecf0] px-3 py-1 font-bold text-left border-b border-[#c8ccd1]">Match Standings</div>
+        <div id="standings-rows" class="p-2 space-y-1 font-mono text-left"></div>
+      </div>
+
       <div id="win-exp-tag" class="bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs font-bold py-1.5 mb-4">
         +250 EXP Gained!
       </div>
 
-      <button onclick="window.location.href='/'" class="w-full bg-[#3366cc] text-white text-xs font-semibold py-2 rounded-sm">
+      <button onclick="window.location.href='/'" class="w-full bg-[#3366cc] text-white text-xs font-semibold py-2 rounded-sm cursor-pointer">
         Return to Lobby
       </button>
     </div>
@@ -76,6 +89,8 @@
     const roomId = params.get('room');
     const attempt = parseInt(params.get('attempt') || '1', 10);
 
+    const winCondition = params.get('winCondition') || 'BOTH';
+    const banNewTabs = params.get('newTabs') !== 'false';
     const banCtrlF = params.get('ctrlF') !== 'false';
     const banTabSwitch = params.get('tabSwitch') !== 'false';
 
@@ -84,7 +99,11 @@
     let timer = null;
     let route = [currentArticle];
 
+    // Initialize HUD labels
     document.getElementById('hud-target').innerText = decodeURIComponent(targetArticle).replace(/_/g, ' ');
+    document.getElementById('hud-rule-badge').innerText = 
+      winCondition === 'TIME' ? 'Fastest Time' : 
+      winCondition === 'STEPS' ? 'Fewest Clicks' : 'Fewest Clicks (Time Tiebreak)';
 
     function startTimer() {
       timer = setInterval(() => {
@@ -95,11 +114,11 @@
       }, 1000);
     }
 
-    // Load Article directly from Wikipedia API
+    // SANITIZER & EMBEDDED WIKIPEDIA LOADER
     async function fetchArticle(title) {
       document.getElementById('article-header').innerText = decodeURIComponent(title).replace(/_/g, ' ');
       const container = document.getElementById('wiki-body');
-      container.innerHTML = "<p class='italic text-gray-500'>Accessing Wikimedia archive...</p>";
+      container.innerHTML = "<p class='italic text-gray-500'>Querying Wikimedia Foundation...</p>";
 
       try {
         const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(title)}`);
@@ -108,28 +127,33 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        // Rewrite internal links
+        // Clean out Wikipedia headers, citations, edit sections, and reference tags
+        doc.querySelectorAll('.mw-ref, .reference, .noprint, style, script, link').forEach(el => el.remove());
+
+        // Rewrite internal links; completely disable external links
         doc.querySelectorAll('a').forEach(anchor => {
           const href = anchor.getAttribute('href');
+          
           if (href && href.startsWith('./') && !href.includes(':')) {
-            const next = href.replace('./', '');
+            const cleanArticle = href.replace('./', '');
             anchor.removeAttribute('href');
-            anchor.setAttribute('onclick', `navigate('${next}')`);
+            anchor.setAttribute('onclick', `navigate('${cleanArticle}')`);
           } else {
+            // Strip external URLs or special pages
             anchor.removeAttribute('href');
-            anchor.classList.add('text-gray-400', 'cursor-not-allowed');
+            anchor.classList.add('disabled-link');
           }
         });
 
         container.innerHTML = doc.body.innerHTML;
         window.scrollTo(0, 0);
 
-        // Win check
+        // Target reached check
         if (title.toLowerCase().replace(/_/g, ' ') === targetArticle.toLowerCase().replace(/_/g, ' ')) {
           triggerVictory();
         }
       } catch (e) {
-        container.innerHTML = "<p class='text-red-500'>Could not load article.</p>";
+        container.innerHTML = "<p class='text-red-500'>Error retrieving Wikipedia entry.</p>";
       }
     }
 
@@ -141,34 +165,59 @@
       fetchArticle(nextTitle);
 
       if (roomId) {
-        socket.emit('player_navigated', { roomId, newPage: nextTitle });
+        socket.emit('player_navigated', { roomId, newPage: nextTitle, timeSeconds: secondsElapsed });
       }
     }
 
-    // Anti-Cheat: Ctrl+F & Focus loss
+    // RULE ENFORCEMENT: BAN CTRL+F
     window.addEventListener('keydown', (e) => {
       if (banCtrlF && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        alert("Ctrl+F search is forbidden in this game!");
+        alert("Rule Violation: In-page search (Ctrl+F) is disabled!");
       }
     });
 
+    // RULE ENFORCEMENT: BAN LEAVING TAB
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && banTabSwitch) {
         if (roomId) socket.emit('violation_tab_switch', { roomId });
-        alert("Tab switched! Attempt forfeited.");
+        alert("Rule Violation: Leaving window/tab forfeits match!");
         window.location.href = '/';
       }
     });
 
-    // Handle Victory & EXP awarding
+    // RULE ENFORCEMENT: BAN NEW TABS (Middle-click, Ctrl-click, Context menu)
+    if (banNewTabs) {
+      const container = document.getElementById('wiki-body');
+      
+      container.addEventListener('auxclick', (e) => {
+        if (e.target.closest('a') && e.button === 1) {
+          e.preventDefault();
+          alert("Rule Violation: Opening links in new tabs is banned!");
+        }
+      });
+
+      container.addEventListener('click', (e) => {
+        if (e.target.closest('a') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+          e.preventDefault();
+          alert("Rule Violation: Opening links in new tabs is banned!");
+        }
+      }, true);
+
+      container.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('a')) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    // VICTORY LOGIC
     async function triggerVictory() {
       clearInterval(timer);
       document.getElementById('win-clicks').innerText = clicks;
       document.getElementById('win-time').innerText = document.getElementById('hud-timer').innerText;
       document.getElementById('win-modal').classList.remove('hidden');
 
-      // Update User Profile
       const rawUser = localStorage.getItem('wikisprint_user');
       if (rawUser) {
         const user = JSON.parse(rawUser);
@@ -178,14 +227,12 @@
         if (mode === 'daily') user.streak += 1;
         if (mode === 'multiplayer') user.wins += 1;
 
-        // Level Up check (every 500 * level EXP)
         if (user.exp >= user.level * 500) {
           user.exp -= user.level * 500;
           user.level += 1;
         }
         localStorage.setItem('wikisprint_user', JSON.stringify(user));
 
-        // Submit daily run to server leaderboard
         if (mode === 'daily') {
           await fetch('/api/daily-submit', {
             method: 'POST',
@@ -202,7 +249,7 @@
       }
     }
 
-    // Multiplayer Socket Connections
+    // MULTIPLAYER SOCKET SYNC
     if (roomId) {
       document.getElementById('hud-opponents').classList.remove('hidden');
       const user = JSON.parse(localStorage.getItem('wikisprint_user') || '{"username":"Guest"}');
@@ -213,8 +260,12 @@
         ticker.innerHTML = `<span class="bg-gray-100 border border-gray-300 px-1 py-0.5 rounded">${data.username}: ${data.clicks} clicks</span>`;
       });
 
-      socket.on('player_won', (data) => {
-        alert(`${data.username} reached the target in ${data.clicks} clicks!`);
+      socket.on('player_finished_run', (data) => {
+        const standingsDiv = document.getElementById('multiplayer-standings');
+        standingsDiv.classList.remove('hidden');
+        document.getElementById('standings-rows').innerHTML = data.standings.map((p, idx) => `
+          <div>#${idx + 1} <b>${p.username}</b> — ${p.clicks} clicks (${Math.floor(p.timeSeconds/60)}:${String(p.timeSeconds%60).padStart(2,'0')})</div>
+        `).join('');
       });
     }
 
