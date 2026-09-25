@@ -71,6 +71,8 @@
           Lv. 1
         </span>
       </button>
+
+      <button onclick="logout()" class="text-xs text-wiki-textSecondary hover:underline">Log out</button>
     </div>
   </header>
 
@@ -82,10 +84,8 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-      
       <!-- LEFT: SINGLE-PLAYER -->
       <div class="space-y-6">
-        <!-- Daily Challenge Card -->
         <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
           <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
             <span>Featured: Daily Challenge</span>
@@ -140,7 +140,6 @@
 
       <!-- RIGHT: MULTIPLAYER -->
       <div class="space-y-6">
-        <!-- Join Match -->
         <div class="border border-wiki-borderLight dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark p-4">
           <h2 class="font-serif font-bold text-sm mb-2">Connect to a room</h2>
           <div class="flex gap-2">
@@ -151,7 +150,6 @@
           </div>
         </div>
 
-        <!-- Host Match with Advanced Rules -->
         <div class="border border-wiki-border dark:border-wiki-borderDark bg-white dark:bg-wiki-surfaceDark">
           <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border dark:border-wiki-borderDark px-4 py-2 font-serif font-semibold text-sm flex justify-between items-center">
             <span>Host Custom Room</span>
@@ -160,8 +158,6 @@
 
           <div class="p-4 space-y-4">
             <div class="space-y-3.5 pt-1 border-t border-wiki-borderLight dark:border-wiki-borderDark">
-              
-              <!-- Win Condition Selection -->
               <div class="flex items-center justify-between text-xs">
                 <div>
                   <span class="font-bold block">Win Condition</span>
@@ -174,7 +170,6 @@
                 </select>
               </div>
 
-              <!-- Ban New Tabs -->
               <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
                 <input id="toggle-new-tabs" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
                 <div>
@@ -183,7 +178,6 @@
                 </div>
               </label>
 
-              <!-- Ban Ctrl+F -->
               <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
                 <input id="toggle-ctrl-f" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
                 <div>
@@ -192,7 +186,6 @@
                 </div>
               </label>
 
-              <!-- Ban Tab Switching -->
               <label class="flex items-start gap-2.5 cursor-pointer text-xs select-none">
                 <input id="toggle-tab-switch" type="checkbox" checked class="mt-0.5 rounded-sm accent-wiki-blue">
                 <div>
@@ -211,33 +204,53 @@
     </div>
   </main>
 
-  <!-- MODALS -->
-
-  <!-- Mandatory Login -->
-  <div id="login-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full p-6 shadow-2xl">
-      <div class="flex items-center gap-2 mb-3">
-        <span class="font-serif text-2xl font-bold">W</span>
-        <h3 class="font-serif font-bold text-lg">Log in to WikiSprint</h3>
-      </div>
-      <p class="text-xs text-wiki-textSecondary mb-4">Choose a handle to track your streaks, EXP, and leaderboard placements.</p>
+  <!-- ================= AUTHENTICATION MODAL (LOG IN / REGISTER) ================= -->
+  <div id="auth-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-sm w-full shadow-2xl">
       
-      <form onsubmit="handleLoginSubmit(event)" class="space-y-3">
-        <div>
-          <label class="block text-xs font-bold mb-1">Wikipedia Handle:</label>
-          <div class="flex items-center">
-            <span class="bg-[#eaecf0] dark:bg-wiki-cardDark border border-r-0 border-wiki-border px-2 py-1.5 text-xs font-mono text-wiki-textSecondary">User:</span>
-            <input id="login-input-name" type="text" required placeholder="Archivist" maxlength="16" class="w-full bg-white dark:bg-wiki-cardDark border border-wiki-border px-3 py-1.5 text-xs focus:outline-none focus:border-wiki-blue">
-          </div>
-        </div>
-        <button type="submit" class="w-full bg-wiki-blue hover:bg-wiki-blueHover text-white text-xs font-semibold py-2 rounded-sm transition">
-          Save & Enter Library
+      <!-- Wikipedia-style Tab Bar -->
+      <div class="flex border-b border-wiki-border text-xs font-semibold">
+        <button id="tab-login" onclick="setAuthTab('login')" class="flex-1 py-2.5 bg-white dark:bg-wiki-surfaceDark border-b-2 border-wiki-blue text-wiki-blue">
+          Log In
         </button>
-      </form>
+        <button id="tab-register" onclick="setAuthTab('register')" class="flex-1 py-2.5 bg-[#eaecf0] dark:bg-wiki-cardDark text-wiki-textSecondary border-b-2 border-transparent hover:text-black">
+          Create Account
+        </button>
+      </div>
+
+      <div class="p-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="font-serif text-2xl font-bold">W</span>
+          <h3 id="auth-heading" class="font-serif font-bold text-base">Log in to your account</h3>
+        </div>
+        <p id="auth-subtext" class="text-xs text-wiki-textSecondary mb-4">Enter your password to verify your profile and scores.</p>
+
+        <div id="auth-error" class="hidden p-2 mb-3 text-xs bg-red-100 dark:bg-red-950 border border-red-400 text-red-700 dark:text-red-300"></div>
+
+        <form onsubmit="handleAuthSubmit(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold mb-1">Username:</label>
+            <div class="flex items-center">
+              <span class="bg-[#eaecf0] dark:bg-wiki-cardDark border border-r-0 border-wiki-border px-2 py-1.5 text-xs font-mono text-wiki-textSecondary">User:</span>
+              <input id="auth-username" type="text" required placeholder="Archivist" maxlength="16" class="w-full bg-white dark:bg-wiki-cardDark border border-wiki-border px-3 py-1.5 text-xs focus:outline-none focus:border-wiki-blue">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold mb-1">Password:</label>
+            <input id="auth-password" type="password" required placeholder="••••••••" minlength="6" class="w-full bg-white dark:bg-wiki-cardDark border border-wiki-border px-3 py-1.5 text-xs focus:outline-none focus:border-wiki-blue">
+            <span id="auth-pwd-hint" class="hidden text-[10px] text-wiki-textSecondary mt-0.5 block">Minimum 6 characters.</span>
+          </div>
+
+          <button id="auth-submit-btn" type="submit" class="w-full bg-wiki-blue hover:bg-wiki-blueHover text-white text-xs font-semibold py-2 rounded-sm transition">
+            Log In
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 
-  <!-- Multiplayer Lobby Staging -->
+  <!-- MULTIPLAYER LOBBY STAGING MODAL -->
   <div id="lobby-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-md w-full shadow-2xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2.5 flex justify-between items-center">
@@ -263,7 +276,7 @@
     </div>
   </div>
 
-  <!-- Leaderboard Modal -->
+  <!-- LEADERBOARD MODAL -->
   <div id="leaderboard-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-2xl w-full shadow-xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2 flex justify-between items-center">
@@ -289,7 +302,7 @@
     </div>
   </div>
 
-  <!-- Profile Modal -->
+  <!-- PROFILE MODAL -->
   <div id="profile-modal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-wiki-surfaceDark border border-wiki-border max-w-md w-full shadow-xl">
       <div class="bg-[#eaecf0] dark:bg-wiki-cardDark border-b border-wiki-border px-4 py-2 flex justify-between items-center">
@@ -338,59 +351,120 @@
     const socket = io();
     let currentDaily = null;
     let currentLobbyId = null;
+    let authMode = 'login'; // 'login' | 'register'
 
-    function getProfile() {
-      const stored = localStorage.getItem('wikisprint_user');
-      return stored ? JSON.parse(stored) : null;
+    // --- 1. AUTHENTICATION CONTROLLER ---
+    function getToken() {
+      return localStorage.getItem('wikisprint_token');
     }
 
-    function saveProfile(p) {
-      localStorage.setItem('wikisprint_user', JSON.stringify(p));
-      updateUI();
-    }
+    async function checkAuth() {
+      const token = getToken();
+      if (!token) {
+        showAuthModal('login');
+        return;
+      }
 
-    function ensureLogin() {
-      let p = getProfile();
-      if (!p) {
-        document.getElementById('login-modal').classList.remove('hidden');
-      } else {
-        updateUI();
+      try {
+        const res = await fetch('/api/me', { headers: { 'Authorization': token } });
+        if (res.ok) {
+          const data = await res.json();
+          renderUser(data.user);
+        } else {
+          localStorage.removeItem('wikisprint_token');
+          showAuthModal('login');
+        }
+      } catch (err) {
+        console.error(err);
       }
     }
 
-    function handleLoginSubmit(e) {
+    function showAuthModal(tab) {
+      document.getElementById('auth-modal').classList.remove('hidden');
+      setAuthTab(tab);
+    }
+
+    function setAuthTab(mode) {
+      authMode = mode;
+      const loginTab = document.getElementById('tab-login');
+      const regTab = document.getElementById('tab-register');
+      const heading = document.getElementById('auth-heading');
+      const subtext = document.getElementById('auth-subtext');
+      const pwdHint = document.getElementById('auth-pwd-hint');
+      const submitBtn = document.getElementById('auth-submit-btn');
+      document.getElementById('auth-error').classList.add('hidden');
+
+      if (mode === 'login') {
+        loginTab.className = "flex-1 py-2.5 bg-white dark:bg-wiki-surfaceDark border-b-2 border-wiki-blue text-wiki-blue";
+        regTab.className = "flex-1 py-2.5 bg-[#eaecf0] dark:bg-wiki-cardDark text-wiki-textSecondary border-b-2 border-transparent hover:text-black";
+        heading.innerText = "Log in to your account";
+        subtext.innerText = "Enter your password to verify your profile and scores.";
+        pwdHint.classList.add('hidden');
+        submitBtn.innerText = "Log In";
+      } else {
+        regTab.className = "flex-1 py-2.5 bg-white dark:bg-wiki-surfaceDark border-b-2 border-wiki-blue text-wiki-blue";
+        loginTab.className = "flex-1 py-2.5 bg-[#eaecf0] dark:bg-wiki-cardDark text-wiki-textSecondary border-b-2 border-transparent hover:text-black";
+        heading.innerText = "Create Wikipedia Handle";
+        subtext.innerText = "Choose your username and password to secure your streak.";
+        pwdHint.classList.remove('hidden');
+        submitBtn.innerText = "Create Account";
+      }
+    }
+
+    async function handleAuthSubmit(e) {
       e.preventDefault();
-      const name = document.getElementById('login-input-name').value.trim();
-      if (!name) return;
-      saveProfile({
-        username: name,
-        level: 1,
-        exp: 0,
-        wins: 0,
-        streak: 0,
-        dailyAttempts: 0
-      });
-      document.getElementById('login-modal').classList.add('hidden');
+      const username = document.getElementById('auth-username').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const errBox = document.getElementById('auth-error');
+      errBox.classList.add('hidden');
+
+      const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errBox.innerText = data.error || "Authentication failed.";
+          errBox.classList.remove('hidden');
+          return;
+        }
+
+        localStorage.setItem('wikisprint_token', data.token);
+        document.getElementById('auth-modal').classList.add('hidden');
+        renderUser(data.user);
+      } catch (err) {
+        errBox.innerText = "Server error. Please try again.";
+        errBox.classList.remove('hidden');
+      }
     }
 
-    function updateUI() {
-      const p = getProfile();
-      if (!p) return;
-      document.getElementById('nav-username').innerText = `User:${p.username}`;
-      document.getElementById('nav-streak').innerText = p.streak;
-      document.getElementById('nav-level').innerText = `Lv. ${p.level}`;
-      document.getElementById('profile-title').innerText = `User Profile: ${p.username}`;
-      document.getElementById('profile-rank').innerText = p.level > 10 ? 'Administrator' : p.level > 5 ? 'Rollbacker' : 'Editor';
-      document.getElementById('profile-level').innerText = p.level;
-      document.getElementById('profile-wins').innerText = p.wins;
-      document.getElementById('profile-streak').innerText = `${p.streak} Days 🔥`;
-
-      const expNeeded = p.level * 500;
-      document.getElementById('profile-exp-text').innerText = `${p.exp} / ${expNeeded} XP`;
-      document.getElementById('profile-exp-bar').style.width = `${Math.min(100, (p.exp / expNeeded) * 100)}%`;
-      document.getElementById('attempt-pips').innerText = `${p.dailyAttempts || 0} of 3 used`;
+    function logout() {
+      localStorage.removeItem('wikisprint_token');
+      window.location.reload();
     }
 
+    function renderUser(u) {
+      document.getElementById('nav-username').innerText = `User:${u.username}`;
+      document.getElementById('nav-streak').innerText = u.streak;
+      document.getElementById('nav-level').innerText = `Lv. ${u.level}`;
+      document.getElementById('profile-title').innerText = `User Profile: ${u.username}`;
+      document.getElementById('profile-rank').innerText = u.level > 10 ? 'Administrator' : u.level > 5 ? 'Rollbacker' : 'Editor';
+      document.getElementById('profile-level').innerText = u.level;
+      document.getElementById('profile-wins').innerText = u.wins;
+      document.getElementById('profile-streak').innerText = `${u.streak} Days 🔥`;
+
+      const expNeeded = u.level * 500;
+      document.getElementById('profile-exp-text').innerText = `${u.exp} / ${expNeeded} XP`;
+      document.getElementById('profile-exp-bar').style.width = `${Math.min(100, (u.exp / expNeeded) * 100)}%`;
+      document.getElementById('attempt-pips').innerText = `${u.dailyAttempts || 0} of 3 used`;
+    }
+
+    // --- 2. GAME LOGIC ---
     async function loadDaily() {
       try {
         const res = await fetch('/api/daily');
@@ -403,13 +477,9 @@
     }
 
     function startDailyChallenge() {
-      const p = getProfile();
-      if (p && p.dailyAttempts >= 3) {
-        return alert("All 3 attempts used for today's daily challenge!");
-      }
-      p.dailyAttempts = (p.dailyAttempts || 0) + 1;
-      saveProfile(p);
-      window.location.href = `/game.html?mode=daily&start=${encodeURIComponent(currentDaily.start)}&target=${encodeURIComponent(currentDaily.target)}&attempt=${p.dailyAttempts}`;
+      const token = getToken();
+      if (!token) return showAuthModal('login');
+      window.location.href = `/game.html?mode=daily&start=${encodeURIComponent(currentDaily.start)}&target=${encodeURIComponent(currentDaily.target)}`;
     }
 
     async function startRandomSprint() {
@@ -425,7 +495,9 @@
     }
 
     function createLobby() {
-      const p = getProfile();
+      const token = getToken();
+      if (!token) return showAuthModal('login');
+
       const rules = {
         winCondition: document.getElementById('select-win-condition').value,
         banNewTabs: document.getElementById('toggle-new-tabs').checked,
@@ -434,7 +506,7 @@
       };
 
       socket.emit('create_room', {
-        username: p.username,
+        token,
         rules,
         startPage: currentDaily?.start,
         targetPage: currentDaily?.target
@@ -442,10 +514,11 @@
     }
 
     function joinRoom() {
+      const token = getToken();
+      if (!token) return showAuthModal('login');
       const code = document.getElementById('input-room-code').value.trim();
-      const p = getProfile();
       if (!code) return alert("Enter room code");
-      socket.emit('join_room', { roomId: code, username: p.username });
+      socket.emit('join_room', { roomId: code, token });
     }
 
     socket.on('room_created', ({ roomId, room }) => {
@@ -525,7 +598,7 @@
       document.getElementById('profile-modal').classList.toggle('hidden');
     }
 
-    ensureLogin();
+    checkAuth();
     loadDaily();
   </script>
 </body>
