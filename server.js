@@ -9,12 +9,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Allow 10MB JSON payloads for base64 badge image uploads
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. LOCAL DATABASE & STORAGE ---
-const DB_FILE = path.join(__dirname, 'database.json');
+// Use Render's persistent disk if present (/var/data), otherwise use local directory
+const DATA_DIR = fs.existsSync('/var/data') ? '/var/data' : __dirname;
+const DB_FILE = path.join(DATA_DIR, 'database.json');
+
+console.log(`📁 Database path: ${DB_FILE}`);
 
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
@@ -35,13 +37,13 @@ function loadDB() {
   }
 }
 
-function saveDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+function saveDB() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
 let db = loadDB();
 
-// --- 2. CRYPTO HELPERS ---
+// --- Crypto & Auth ---
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -61,8 +63,8 @@ function authMiddleware(req, res, next) {
   const username = db.sessions[token];
   const user = db.users[username];
   if (!user) return res.status(401).json({ error: "User not found." });
-  if (user.isBanned) return res.status(403).json({ error: "Your account has been banned by an administrator." });
-  
+  if (user.isBanned) return res.status(403).json({ error: "Account suspended." });
+
   req.username = username;
   req.user = user;
   next();
@@ -70,13 +72,13 @@ function authMiddleware(req, res, next) {
 
 function adminAuthMiddleware(req, res, next) {
   const adminToken = req.headers['x-admin-token'];
-  if (!adminToken || !db.sessions[adminToken] || db.sessions[adminToken] !== '__ADMIN__') {
-    return res.status(403).json({ error: "Admin clearance required." });
+  if (!adminToken || db.sessions[adminToken] !== '__ADMIN__') {
+    return res.status(403).json({ error: "Admin privilege required." });
   }
   next();
 }
 
-// --- 3. ADMIN DASHBOARD & SETUP ---
+// --- Admin Endpoints ---
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
@@ -85,58 +87,53 @@ app.get('/api/admin/status', (req, res) => {
   res.json({ isSetup: db.adminConfig.isSetup });
 });
 
-// One-time Admin Enrollment
 app.post('/api/admin/setup', (req, res) => {
   if (db.adminConfig.isSetup) {
-    return res.status(400).json({ error: "Admin account is already setup. Please log in." });
+    return res.status(400).json({ error: "Admin account is already set up." });
   }
 
   const { adminPassword, ownerUsername } = req.body;
   if (!adminPassword || adminPassword.length < 8) {
-    return res.status(400).json({ error: "Admin password must be at least 8 characters long." });
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
   }
 
   const { salt, hash } = hashPassword(adminPassword);
   db.adminConfig = { isSetup: true, salt, hash };
 
-  // Grant the owner account the official Sysop Admin badge
   if (ownerUsername && db.users[ownerUsername]) {
     if (!db.users[ownerUsername].badges) db.users[ownerUsername].badges = [];
     db.users[ownerUsername].badges.push({
       id: 'badge_admin',
       name: 'Bureaucrat / Sysop',
-      description: 'System Administrator and platform supervisor.',
+      description: 'Platform Supervisor & Administrator',
       icon: '🛡️'
     });
   }
 
   const adminToken = crypto.randomBytes(32).toString('hex');
   db.sessions[adminToken] = '__ADMIN__';
-  saveDB(db);
+  saveDB();
 
   res.json({ success: true, adminToken });
 });
 
 app.post('/api/admin/login', (req, res) => {
   const { adminPassword } = req.body;
-  if (!db.adminConfig.isSetup) {
-    return res.status(400).json({ error: "Admin account has not been initialized." });
-  }
+  if (!db.adminConfig.isSetup) return res.status(400).json({ error: "Admin not set up yet." });
 
   if (!verifyPassword(adminPassword, db.adminConfig.salt, db.adminConfig.hash)) {
-    return res.status(401).json({ error: "Incorrect administrator password." });
+    return res.status(401).json({ error: "Invalid password." });
   }
 
   const adminToken = crypto.randomBytes(32).toString('hex');
   db.sessions[adminToken] = '__ADMIN__';
-  saveDB(db);
+  saveDB();
 
   res.json({ success: true, adminToken });
 });
 
-// Admin Control Endpoints
 app.get('/api/admin/users', adminAuthMiddleware, (req, res) => {
-  const userList = Object.values(db.users).map(u => ({
+  const users = Object.values(db.users).map(u => ({
     username: u.username,
     level: u.level,
     wins: u.wins,
@@ -144,39 +141,38 @@ app.get('/api/admin/users', adminAuthMiddleware, (req, res) => {
     badges: u.badges || [],
     isBanned: !!u.isBanned
   }));
-  res.json({ users: userList });
+  res.json({ users });
 });
 
 app.post('/api/admin/ban', adminAuthMiddleware, (req, res) => {
   const { username, ban } = req.body;
-  if (!db.users[username]) return res.status(404).json({ error: "User not found." });
-  db.users[username].isBanned = !!ban;
-  saveDB(db);
+  if (db.users[username]) {
+    db.users[username].isBanned = !!ban;
+    saveDB();
+  }
   res.json({ success: true });
 });
 
 app.post('/api/admin/give-badge', adminAuthMiddleware, (req, res) => {
   const { username, badge } = req.body;
-  if (!db.users[username]) return res.status(404).json({ error: "User not found." });
-  if (!db.users[username].badges) db.users[username].badges = [];
-
-  // Prevent duplicate badges by ID
-  db.users[username].badges = db.users[username].badges.filter(b => b.id !== badge.id);
-  db.users[username].badges.push(badge);
-  saveDB(db);
+  if (db.users[username]) {
+    if (!db.users[username].badges) db.users[username].badges = [];
+    db.users[username].badges = db.users[username].badges.filter(b => b.id !== badge.id);
+    db.users[username].badges.push(badge);
+    saveDB();
+  }
   res.json({ success: true });
 });
 
 app.post('/api/admin/set-daily', adminAuthMiddleware, (req, res) => {
   const { start, target } = req.body;
-  if (!start || !target) return res.status(400).json({ error: "Both start and target required." });
   db.customDaily = { start: start.trim().replace(/ /g, '_'), target: target.trim().replace(/ /g, '_') };
-  db.dailyLeaderboard = []; // Reset leaderboard for new articles
-  saveDB(db);
+  db.dailyLeaderboard = [];
+  saveDB();
   res.json({ success: true });
 });
 
-// --- 4. AUTHENTICATION & USER ENDPOINTS ---
+// --- User Authentication ---
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
   const cleanName = (username || '').trim();
@@ -206,7 +202,7 @@ app.post('/api/register', (req, res) => {
 
   db.users[cleanName] = newUser;
   db.sessions[token] = cleanName;
-  saveDB(db);
+  saveDB();
 
   const { salt: _, hash: __, ...safeUser } = newUser;
   res.json({ token, user: safeUser });
@@ -214,18 +210,19 @@ app.post('/api/register', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  const user = db.users[(username || '').trim()];
+  const cleanName = (username || '').trim();
+  const user = db.users[cleanName];
 
   if (!user || !verifyPassword(password, user.salt, user.hash)) {
-    return res.status(401).json({ error: "Incorrect username or password." });
+    return res.status(401).json({ error: "Invalid username or password." });
   }
   if (user.isBanned) {
-    return res.status(403).json({ error: "Your account is permanently suspended." });
+    return res.status(403).json({ error: "Account suspended." });
   }
 
   const token = crypto.randomBytes(32).toString('hex');
   db.sessions[token] = user.username;
-  saveDB(db);
+  saveDB();
 
   const { salt, hash, ...safeUser } = user;
   res.json({ token, user: safeUser });
@@ -236,7 +233,7 @@ app.get('/api/me', authMiddleware, (req, res) => {
   res.json({ user: safeUser });
 });
 
-// --- 5. DAILY CHALLENGE & LEADERBOARD ---
+// --- Daily Challenges & Leaderboard ---
 const CURATED_PAIRS = [
   { start: "The_Great_Barrier_Reef", target: "Quantum_computing" },
   { start: "Renaissance", target: "Artificial_intelligence" },
@@ -245,13 +242,10 @@ const CURATED_PAIRS = [
 ];
 
 function getDailyChallenge() {
-  if (db.customDaily) {
-    return { day: 'Custom', ...db.customDaily };
-  }
+  if (db.customDaily) return { day: 'Custom', ...db.customDaily };
   const now = new Date();
   const dayOfYear = Math.floor((now - new Date(now.getUTCFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
-  const pair = CURATED_PAIRS[dayOfYear % CURATED_PAIRS.length];
-  return { day: dayOfYear, ...pair };
+  return { day: dayOfYear, ...CURATED_PAIRS[dayOfYear % CURATED_PAIRS.length] };
 }
 
 app.get('/api/daily', (req, res) => {
@@ -275,7 +269,7 @@ app.post('/api/daily-submit', authMiddleware, (req, res) => {
   const { clicks, timeSeconds, attempt, route } = req.body;
   const user = req.user;
 
-  // Strict enforcement: runs beyond attempt 3 are unranked
+  // Only rank runs within the first 3 attempts
   if (attempt <= 3) {
     db.dailyLeaderboard.push({
       username: user.username,
@@ -296,7 +290,7 @@ app.post('/api/daily-submit', authMiddleware, (req, res) => {
     user.level += 1;
   }
 
-  saveDB(db);
+  saveDB();
   const { salt, hash, ...safeUser } = user;
   res.json({ success: true, user: safeUser });
 });
@@ -312,12 +306,12 @@ app.post('/api/match-finish', authMiddleware, (req, res) => {
     user.level += 1;
   }
 
-  saveDB(db);
+  saveDB();
   const { salt, hash, ...safeUser } = user;
   res.json({ success: true, user: safeUser });
 });
 
-// --- 6. MULTIPLAYER ROOM ENGINE ---
+// --- Real-Time Multiplayer Engine ---
 const rooms = new Map();
 
 io.on('connection', (socket) => {
@@ -476,4 +470,4 @@ function serializeRoom(room) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`WikiSprint active on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 WikiSprint online on port ${PORT}`));
